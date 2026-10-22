@@ -196,7 +196,7 @@ api.get('/ajustes-publicos', (req, res) => {
 });
 
 api.use(auth);
-api.get('/yo', (req, res) => res.json(req.user));
+api.get('/yo', (req, res) => res.json({ ...req.user, version: VERSION }));
 
 // --- ajustes ---
 api.get('/ajustes', (req, res) => res.json(getAjustes()));
@@ -550,8 +550,16 @@ function cargarSemilla() {
 cargarSemilla();
 
 app.use('/api', api);
-app.get('/healthz', (req, res) => res.json({ ok: true }));
-app.use(express.static(path.join(__dirname, 'public'), { maxAge: '5m' }));
-app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+// Versión desplegada (Railway define RAILWAY_GIT_COMMIT_SHA); sirve para saber qué versión tiene abierta cada celular
+const VERSION = (process.env.RAILWAY_GIT_COMMIT_SHA || '').slice(0, 7) || 'local';
+app.get('/healthz', (req, res) => res.json({ ok: true, version: VERSION }));
+// Sin caché: cada vez que se abre la app, el celular revisa si hay versión nueva
+const sinCache = (res) => res.setHeader('Cache-Control', 'no-cache');
+const INDEX = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8')
+  .replace('/styles.css"', `/styles.css?v=${VERSION}"`).replace('/app.js"', `/app.js?v=${VERSION}"`);
+const enviarIndex = (req, res) => { res.setHeader('Cache-Control', 'no-store'); res.type('html').send(INDEX); };
+app.get(['/', '/index.html'], enviarIndex);
+app.use(express.static(path.join(__dirname, 'public'), { setHeaders: sinCache, index: false }));
+app.get('*', enviarIndex);
 
 app.listen(PORT, () => console.log(`Ecofest logística en puerto ${PORT} · datos en ${DB_FILE}`));

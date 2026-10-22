@@ -696,7 +696,8 @@ function vistaMas() {
       <a class="btn" href="/api/export/entregas.csv">⬇️ Entregas de alimentación</a>
       ${esAdmin() ? '<a class="btn" href="/api/export/respaldo.db">💾 Respaldo completo</a>' : ''}
     </div>
-    <p><button class="btn peligro bloque" id="salir">Cerrar sesión</button></p>`);
+    <p><button class="btn peligro bloque" id="salir">Cerrar sesión</button></p>
+    <p class="suave pequeno" style="text-align:center">Versión ${h(estado.user.version || '')}</p>`);
   document.getElementById('salir').onclick = async () => { await api('/logout', { method: 'POST' }); estado.user = null; vistaLogin(); };
 }
 
