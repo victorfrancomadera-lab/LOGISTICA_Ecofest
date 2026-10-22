@@ -94,6 +94,14 @@ CREATE INDEX IF NOT EXISTS ix_traslados_fecha ON traslados(fecha);
 CREATE INDEX IF NOT EXISTS ix_entregas_fecha ON entregas(fecha);
 `);
 
+// Columnas agregadas después de la primera versión (bases ya creadas en Railway)
+const columnasEntregas = db.prepare('PRAGMA table_info(entregas)').all().map((c) => c.name);
+for (const [col, tipo] of [['ubicacion', 'TEXT'], ['grupo', 'TEXT'], ['es_grupo', 'INTEGER NOT NULL DEFAULT 0'],
+  ['merienda_am', 'INTEGER NOT NULL DEFAULT 0'], ['almuerzo', 'INTEGER NOT NULL DEFAULT 0'], ['merienda_pm', 'INTEGER NOT NULL DEFAULT 0'],
+  ['observacion', 'TEXT'], ['monto_manual', 'INTEGER NOT NULL DEFAULT 0'], ['recibido_por', 'TEXT']]) {
+  if (!columnasEntregas.includes(col)) db.exec(`ALTER TABLE entregas ADD COLUMN ${col} ${tipo}`);
+}
+
 // ---------- utilidades ----------
 function hashPin(pin) {
   const salt = crypto.randomBytes(16).toString('hex');
@@ -115,6 +123,8 @@ function getAjustes() {
     color_secundario: '#8DC63F',
     logo: '/logo.jpg',
     monto_defecto: '20000',
+    valor_merienda: '0',
+    valor_almuerzo: '0',
   };
   for (const r of db.prepare('SELECT clave, valor FROM ajustes').all()) out[r.clave] = r.valor;
   return out;
@@ -179,7 +189,8 @@ api.post('/logout', (req, res) => {
 });
 api.get('/ajustes-publicos', (req, res) => {
   const a = getAjustes();
-  res.json({ evento: a.evento, color_primario: a.color_primario, color_secundario: a.color_secundario, logo: a.logo, monto_defecto: a.monto_defecto });
+  res.json({ evento: a.evento, color_primario: a.color_primario, color_secundario: a.color_secundario, logo: a.logo, monto_defecto: a.monto_defecto,
+    valor_merienda: a.valor_merienda, valor_almuerzo: a.valor_almuerzo });
 });
 
 api.use(auth);
@@ -188,9 +199,10 @@ api.get('/yo', (req, res) => res.json(req.user));
 // --- ajustes ---
 api.get('/ajustes', (req, res) => res.json(getAjustes()));
 api.put('/ajustes', soloAdmin, (req, res) => {
-  const permitidas = ['evento', 'color_primario', 'color_secundario', 'logo', 'monto_defecto'];
+  const permitidas = ['evento', 'color_primario', 'color_secundario', 'logo', 'monto_defecto', 'valor_merienda', 'valor_almuerzo'];
   const up = db.prepare('INSERT INTO ajustes (clave, valor) VALUES (?,?) ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor');
   for (const k of permitidas) if (k in req.body) up.run(k, req.body[k] === null ? null : String(req.body[k]));
+  recalcularPendientes();
   res.json(getAjustes());
 });
 
@@ -330,24 +342,50 @@ api.get('/entregas', (req, res) => {
   if (estado) { cond.push('e.estado = ?'); params.push(estado); }
   const where = cond.length ? ` WHERE ${cond.join(' AND ')}` : '';
   // la firma no se manda en el listado para no pesar en el celular
-  const filas = db.prepare(`${SQL_ENTREGAS}${where} ORDER BY e.estado = 'pendiente' DESC, e.beneficiario`).all(...params);
-  res.json(filas.map(({ firma, ...r }) => ({ ...r, tiene_firma: !!firma })));
+  const filas = db.prepare(`${SQL_ENTREGAS}${where} ORDER BY e.estado = 'pendiente' DESC, e.ubicacion, e.es_grupo, e.beneficiario`).all(...params);
+  res.json(filas.map(({ firma, ...r }) => ({ ...r, tiene_firma: !!firma, comidas: conceptoComidas(r) })));
 });
 api.get('/entregas/resumen', (req, res) => {
   const { fecha } = req.query;
   const where = fecha ? 'WHERE fecha = ?' : '';
   const params = fecha ? [fecha] : [];
-  res.json(db.prepare(`SELECT estado, COUNT(*) n, COALESCE(SUM(monto),0) total FROM entregas ${where} GROUP BY estado`).all(...params));
+  res.json(db.prepare(`SELECT estado, COUNT(*) n, COALESCE(SUM(monto),0) total, SUM(merienda_am) merienda_am, SUM(almuerzo) almuerzo,
+    SUM(merienda_pm) merienda_pm FROM entregas ${where} GROUP BY estado`).all(...params));
 });
 api.get('/entregas/:id', (req, res) => {
   const e = db.prepare(`${SQL_ENTREGAS} WHERE e.id = ?`).get(req.params.id);
   if (!e) return res.status(404).json({ error: 'No existe' });
-  res.json(e);
+  res.json({ ...e, comidas: conceptoComidas(e) });
 });
+const entero = (v) => Math.max(0, Math.round(Number(String(v ?? '').replace(/[^\d]/g, '')) || 0));
+// Texto de las comidas: "1 merienda AM, 1 almuerzo y 1 merienda PM"
+function conceptoComidas(e) {
+  const partes = [];
+  const p = (n, s, pl) => n && partes.push(`${n} ${n === 1 ? s : pl}`);
+  p(e.merienda_am, 'merienda AM', 'meriendas AM'); p(e.almuerzo, 'almuerzo', 'almuerzos'); p(e.merienda_pm, 'merienda PM', 'meriendas PM');
+  return partes.length > 1 ? partes.slice(0, -1).join(', ') + ' y ' + partes.at(-1) : partes[0] || null;
+}
+function montoComidas(e, a = getAjustes()) {
+  return entero(e.merienda_am + e.merienda_pm) * entero(a.valor_merienda) + entero(e.almuerzo) * entero(a.valor_almuerzo);
+}
+function recalcularPendientes() {
+  const a = getAjustes();
+  const up = db.prepare('UPDATE entregas SET monto = ? WHERE id = ?');
+  for (const e of db.prepare(`SELECT * FROM entregas WHERE estado = 'pendiente' AND monto_manual = 0
+    AND (merienda_am + almuerzo + merienda_pm) > 0`).all()) up.run(montoComidas(e, a), e.id);
+}
 function crearEntrega(b) {
-  const r = db.prepare(`INSERT INTO entregas (fecha, beneficiario, documento, telefono, cargo, monto, concepto)
-    VALUES (?,?,?,?,?,?,?)`).run(txt(b.fecha), txt(b.beneficiario), txt(b.documento), txt(b.telefono), txt(b.cargo),
-    Math.round(Number(String(b.monto ?? 0).replace(/[^\d]/g, '')) || 0), txt(b.concepto) || 'Almuerzo');
+  const e = {
+    merienda_am: entero(b.merienda_am), almuerzo: entero(b.almuerzo), merienda_pm: entero(b.merienda_pm),
+  };
+  const tieneComidas = e.merienda_am + e.almuerzo + e.merienda_pm > 0;
+  const manual = b.monto !== undefined && b.monto !== '' && !(tieneComidas && entero(b.monto) === 0);
+  const monto = manual ? entero(b.monto) : tieneComidas ? montoComidas(e) : entero(getAjustes().monto_defecto);
+  const r = db.prepare(`INSERT INTO entregas (fecha, beneficiario, documento, telefono, cargo, monto, concepto, ubicacion, grupo,
+    es_grupo, merienda_am, almuerzo, merienda_pm, observacion, monto_manual) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(txt(b.fecha), txt(b.beneficiario), txt(b.documento), txt(b.telefono), txt(b.cargo), monto,
+      txt(b.concepto) || (tieneComidas ? 'Alimentación' : 'Almuerzo'), txt(b.ubicacion), txt(b.grupo), b.es_grupo ? 1 : 0,
+      e.merienda_am, e.almuerzo, e.merienda_pm, txt(b.observacion), manual ? 1 : 0);
   return Number(r.lastInsertRowid);
 }
 // Crear una entrega (pendiente). Cualquier usuario puede registrar a alguien que no estaba en la lista.
@@ -373,9 +411,23 @@ api.put('/entregas/:id', (req, res) => {
   if (!e) return res.status(404).json({ error: 'No existe' });
   if (e.estado !== 'pendiente' && req.user.rol !== 'admin') return res.status(403).json({ error: 'Una entrega firmada no se puede editar' });
   const b = req.body;
-  db.prepare(`UPDATE entregas SET fecha = ?, beneficiario = ?, documento = ?, telefono = ?, cargo = ?, monto = ?, concepto = ? WHERE id = ?`)
+  const c = {
+    merienda_am: 'merienda_am' in b ? entero(b.merienda_am) : e.merienda_am,
+    almuerzo: 'almuerzo' in b ? entero(b.almuerzo) : e.almuerzo,
+    merienda_pm: 'merienda_pm' in b ? entero(b.merienda_pm) : e.merienda_pm,
+  };
+  const tieneComidas = c.merienda_am + c.almuerzo + c.merienda_pm > 0;
+  // Si el monto escrito es el mismo que daría el cálculo (o viene vacío), se sigue calculando solo
+  const calculado = montoComidas(c);
+  const escrito = b.monto === undefined || b.monto === '' ? null : entero(b.monto);
+  const manual = escrito !== null && !(tieneComidas && (escrito === calculado || escrito === 0));
+  const monto = manual ? escrito : tieneComidas ? calculado : (escrito ?? e.monto);
+  db.prepare(`UPDATE entregas SET fecha = ?, beneficiario = ?, documento = ?, telefono = ?, cargo = ?, monto = ?, concepto = ?,
+    ubicacion = ?, grupo = ?, es_grupo = ?, merienda_am = ?, almuerzo = ?, merienda_pm = ?, observacion = ?, monto_manual = ? WHERE id = ?`)
     .run(txt(b.fecha) || e.fecha, txt(b.beneficiario) || e.beneficiario, txt(b.documento), txt(b.telefono), txt(b.cargo),
-      Math.round(Number(String(b.monto ?? e.monto).replace(/[^\d]/g, '')) || 0), txt(b.concepto) || e.concepto, e.id);
+      monto, txt(b.concepto) || e.concepto, 'ubicacion' in b ? txt(b.ubicacion) : e.ubicacion, 'grupo' in b ? txt(b.grupo) : e.grupo,
+      'es_grupo' in b ? (b.es_grupo && b.es_grupo !== '0' ? 1 : 0) : e.es_grupo, c.merienda_am, c.almuerzo, c.merienda_pm,
+      'observacion' in b ? txt(b.observacion) : e.observacion, manual ? 1 : 0, e.id);
   res.json({ ok: true });
 });
 api.post('/entregas/:id/firmar', (req, res) => {
@@ -383,13 +435,15 @@ api.post('/entregas/:id/firmar', (req, res) => {
   if (!e) return res.status(404).json({ error: 'No existe' });
   if (e.estado !== 'pendiente') return res.status(409).json({ error: 'Esta entrega ya fue firmada o anulada' });
   const { firma, documento, monto, lat, lng } = req.body;
+  const recibidoPor = txt(req.body.recibido_por);
+  if (e.es_grupo && !recibidoPor) return res.status(400).json({ error: 'Escriba el nombre de quien recibe por el grupo' });
   if (!/^data:image\/png;base64,/.test(firma || '') || firma.length < 2000) return res.status(400).json({ error: 'Falta la firma' });
   if (!txt(documento) && !txt(e.documento)) return res.status(400).json({ error: 'Falta el número de documento' });
   const montoFinal = monto !== undefined && monto !== '' ? Math.round(Number(String(monto).replace(/[^\d]/g, '')) || 0) : e.monto;
   if (!montoFinal) return res.status(400).json({ error: 'El monto debe ser mayor a cero' });
   db.prepare(`UPDATE entregas SET estado = 'entregado', firma = ?, firmado_en = ?, entregado_por = ?, documento = ?, monto = ?,
-    lat = ?, lng = ?, dispositivo = ? WHERE id = ?`).run(firma, ahora(), req.user.id, txt(documento) || e.documento, montoFinal,
-    lat ?? null, lng ?? null, String(req.headers['user-agent'] || '').slice(0, 250), e.id);
+    lat = ?, lng = ?, dispositivo = ?, recibido_por = ? WHERE id = ?`).run(firma, ahora(), req.user.id, txt(documento) || e.documento, montoFinal,
+    lat ?? null, lng ?? null, String(req.headers['user-agent'] || '').slice(0, 250), recibidoPor, e.id);
   res.json({ ok: true });
 });
 api.post('/entregas/:id/anular', soloAdmin, (req, res) => {
@@ -427,10 +481,11 @@ api.get('/export/traslados.csv', (req, res) => {
 api.get('/export/entregas.csv', (req, res) => {
   const filas = db.prepare(`${SQL_ENTREGAS} ORDER BY e.fecha, e.id`).all()
     .map((e) => ({ ...e, consecutivo: consecutivo(e.id) }));
-  csv(res, 'entregas_almuerzos_ecofest.csv', [['consecutivo', 'Comprobante'], ['fecha', 'Fecha'], ['beneficiario', 'Nombre'],
+  csv(res, 'entregas_almuerzos_ecofest.csv', [['consecutivo', 'Comprobante'], ['fecha', 'Fecha'], ['ubicacion', 'Lugar'], ['beneficiario', 'Nombre'], ['grupo', 'Grupo'],
+    ['merienda_am', 'Merienda AM'], ['almuerzo', 'Almuerzo'], ['merienda_pm', 'Merienda PM'], ['recibido_por', 'Recibió (grupo)'],
     ['documento', 'Documento'], ['telefono', 'Teléfono'], ['cargo', 'Cargo/Rol'], ['concepto', 'Concepto'], ['monto', 'Monto'],
     ['estado', 'Estado'], ['firmado_en', 'Firmado (UTC)'], ['entregado_por_nombre', 'Entregado por'], ['lat', 'Latitud'],
-    ['lng', 'Longitud'], ['anulada_motivo', 'Motivo anulación']], filas);
+    ['lng', 'Longitud'], ['observacion', 'Observación'], ['anulada_motivo', 'Motivo anulación']], filas);
 });
 const consecutivo = (id) => `ECO-${String(id).padStart(4, '0')}`;
 
@@ -440,6 +495,32 @@ api.get('/export/respaldo.db', soloAdmin, (req, res) => {
   db.exec(`VACUUM INTO '${tmp.replace(/'/g, "''")}'`);
   res.download(tmp, 'ecofest_respaldo.db', () => fs.unlink(tmp, () => {}));
 });
+
+// Planilla inicial (semilla/planilla_ecofest.json): se carga una sola vez, en la primera arrancada
+function cargarSemilla() {
+  if (getAjustes().semilla_cargada) return;
+  const archivo = path.join(__dirname, 'semilla', 'planilla_ecofest.json');
+  if (!fs.existsSync(archivo)) return;
+  const s = JSON.parse(fs.readFileSync(archivo, 'utf8'));
+  const admin = db.prepare(`SELECT id FROM usuarios WHERE rol = 'admin' ORDER BY id LIMIT 1`).get();
+  db.exec('BEGIN');
+  try {
+    for (const e of s.entregas) crearEntrega({ ...e, concepto: 'Alimentación' });
+    for (const t of s.transporte) {
+      const paradas = t.paradas.map(([lugar, quien], i) => `${i + 1}) ${lugar}: ${quien}`).join(' · ');
+      crearTraslado({
+        fecha: t.fecha, pasajeros: `${t.actividad}: ${t.personal_planilla}`, lugar_recogida: paradas,
+        destino: t.destino, hora_recogida: null,
+        notas: [t.hora_actividad ? `Actividad inicia ${t.hora_actividad}.` : null, `Conductor: ${t.conductor_planilla}.`,
+          `Cruce con alimentos: ${t.cruce}`, 'Falta: placa, hora de recogida y regreso.'].filter(Boolean).join(' '),
+      }, admin && admin.id);
+    }
+    db.prepare(`INSERT INTO ajustes (clave, valor) VALUES ('semilla_cargada', ?)`).run(ahora());
+    db.exec('COMMIT');
+    console.log(`Planilla inicial cargada: ${s.entregas.length} entregas, ${s.transporte.length} traslados`);
+  } catch (e) { db.exec('ROLLBACK'); console.error('No se pudo cargar la planilla inicial:', e.message); }
+}
+cargarSemilla();
 
 app.use('/api', api);
 app.get('/healthz', (req, res) => res.json({ ok: true }));

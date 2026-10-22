@@ -80,6 +80,10 @@ a.tarjeta:active { transform: scale(.99); }
 .est-finalizado { background: #D3EBDD; color: #0F4D2C; }
 .est-cancelado { background: #EEE; color: #777; text-decoration: line-through; }
 .est-pendiente { background: #FFF1D6; color: #8A5A00; }
+.chip.comida { background: color-mix(in srgb, var(--secundario) 25%, #fff); color: var(--primario); }
+.aviso { background: #FFF1D6; color: #7A4E00; border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; font-size: 14px; }
+.obs { margin-top: 6px; background: #FFF1D6; color: #7A4E00; border-radius: 8px; padding: 6px 8px; }
+.tarjeta.con-obs { border-color: #E9C46A; }
 .est-anulada { background: #EEE; color: #777; }
 
 .barra-fechas { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 10px; }
@@ -93,6 +97,7 @@ input, select, textarea {
 }
 textarea { min-height: 80px; resize: vertical; }
 input:focus, select:focus, textarea:focus, .btn:focus-visible { outline: 3px solid color-mix(in srgb, var(--primario) 35%, transparent); outline-offset: 1px; }
+.tres { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 10px; }
 .dos { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
 @media (max-width: 420px) { .dos { grid-template-columns: 1fr; } }
 .check { display: flex; gap: 10px; align-items: flex-start; font-weight: 500; }

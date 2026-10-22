@@ -19,6 +19,12 @@ Los dos módulos se exportan a Excel (CSV) desde **Más**.
 
 Requiere Node 22.13 o superior (viene declarado en `package.json`). No usa base de datos externa: SQLite en el volumen.
 
+## Planilla inicial
+
+La primera vez que arranca, la app carga sola `semilla/planilla_ecofest.json`: 71 entregas de alimentación (viernes 23 a domingo 25 de octubre, por persona o grupo, lugar y comidas) y las 4 rutas de transporte. Ese archivo se genera con `python3 semilla/construir.py` a partir de los Excel. Se carga una sola vez; después todo se edita desde la app.
+
+Los montos se calculan con **Más → Valores y marca** (valor por merienda y por almuerzo). Al guardar, se recalculan las entregas pendientes.
+
 ## Primer uso
 
 1. Entre con el usuario admin.

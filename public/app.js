@@ -164,7 +164,19 @@ function enlazarFechas(onCambio, idCampo) {
 }
 
 // ================= TRASLADOS =================
+// "1) Edificio Mallorquín: Chavelita · 2) Montecristo: Jessica" → [{lugar, quien}]
+function paradas(texto) {
+  if (!texto) return [];
+  return texto.split(' · ').map((p) => {
+    const m = p.replace(/^\d+\)\s*/, '').match(/^([^:]+)(?::\s*(.*))?$/);
+    return { lugar: (m ? m[1] : p).trim(), quien: m && m[2] ? m[2].trim() : '' };
+  });
+}
 async function vistaTraslados(silencioso) {
+  if (!estado.fechaTrAuto) {
+    estado.fechaTr = fechaInicial([...new Set((await api('/traslados')).map((t) => t.fecha))], estado.fechaTr);
+    estado.fechaTrAuto = true;
+  }
   const [lista, todos, vehiculos] = await Promise.all([
     api('/traslados?fecha=' + estado.fechaTr), api('/traslados'), api('/vehiculos'),
   ]);
@@ -193,7 +205,7 @@ async function vistaTraslados(silencioso) {
 }
 function tarjetaTraslado(t) {
   return `<a class="tarjeta" href="#/traslados/${t.id}">
-    <div class="fila entre"><span class="hora">${h(t.hora_recogida || '--:--')}</span>
+    <div class="fila entre"><span class="hora">${t.hora_recogida ? h(t.hora_recogida) : '<span class="suave pequeno">Hora por definir</span>'}</span>
       <span class="chip est-${h(t.estado)}">${h(ESTADOS[t.estado] || t.estado)}</span></div>
     <div class="titulo">${h(t.pasajeros)}</div>
     <div class="ruta">📍 <b>${h(t.lugar_recogida || 'Sin lugar')}</b> → 🏁 <b>${h(t.destino || 'Sin destino')}</b></div>
@@ -206,13 +218,14 @@ async function vistaTraslado(id) {
   const t = await api('/traslados/' + id);
   pintar(`
     <p class="no-print"><a href="#/traslados">← Traslados</a></p>
-    <div class="fila entre"><h1 style="margin:0">${h(t.hora_recogida || '--:--')} · ${h(t.pasajeros)}</h1></div>
+    <div class="fila entre"><h1 style="margin:0">${t.hora_recogida ? h(t.hora_recogida) + ' · ' : ''}${h(t.pasajeros)}</h1></div>
     <p><span class="chip est-${h(t.estado)}">${h(ESTADOS[t.estado])}</span> <span class="suave">${h(fechaLarga(t.fecha))}</span></p>
 
     <div class="tarjeta">
       <div class="suave pequeno">RECOGER</div>
-      <div class="titulo">${h(t.hora_recogida || '')} · ${h(t.lugar_recogida || '—')}</div>
-      ${t.lugar_recogida ? `<a class="pequeno" href="${mapa(t.lugar_recogida)}" target="_blank" rel="noopener">Abrir en mapa</a>` : ''}
+      ${t.hora_recogida ? `<div class="titulo">${h(t.hora_recogida)}</div>` : '<div class="obs pequeno">Hora de recogida por definir</div>'}
+      ${paradas(t.lugar_recogida).map((p) => `<div style="margin-top:4px"><b>${h(p.lugar)}</b>${p.quien ? ` · ${h(p.quien)}` : ''}
+        ${p.lugar && p.lugar !== '¿?' ? `<a class="pequeno" href="${mapa(p.lugar)}" target="_blank" rel="noopener">mapa</a>` : ''}</div>`).join('') || '<div>—</div>'}
       <div class="suave pequeno" style="margin-top:10px">LLEVAR A</div>
       <div class="titulo">${h(t.destino || '—')}</div>
       ${t.destino ? `<a class="pequeno" href="${mapa(t.destino)}" target="_blank" rel="noopener">Abrir en mapa</a>` : ''}
@@ -346,7 +359,9 @@ const MAPA_TR = {
 const MAPA_AL = {
   fecha: 'fecha', nombre: 'beneficiario', beneficiario: 'beneficiario', persona: 'beneficiario', documento: 'documento',
   cedula: 'documento', cc: 'documento', telefono: 'telefono', celular: 'telefono', cargo: 'cargo', rol: 'cargo',
-  area: 'cargo', monto: 'monto', valor: 'monto', concepto: 'concepto',
+  area: 'cargo', monto: 'monto', valor: 'monto', concepto: 'concepto', grupo: 'grupo', entidad: 'grupo',
+  lugar: 'ubicacion', ubicacion: 'ubicacion', meriendaam: 'merienda_am', am: 'merienda_am', almuerzo: 'almuerzo',
+  almuerzos: 'almuerzo', meriendapm: 'merienda_pm', pm: 'merienda_pm', observacion: 'observacion', observaciones: 'observacion',
 };
 function vistaImportar({ titulo, volver, columnas, mapa, ruta, ejemplo, completar }) {
   if (!esAdmin()) { location.hash = volver; return; }
@@ -386,36 +401,73 @@ function vistaImportarTraslados() {
   });
 }
 
-// ================= ALMUERZOS =================
+// ================= ALMUERZOS / ALIMENTACIÓN =================
+// Si hoy no hay nada programado, abre en la próxima fecha que sí tenga registros
+function fechaInicial(fechas, actual) {
+  if (fechas.includes(actual) || !fechas.length) return actual;
+  return fechas.filter((f) => f >= hoy()).sort()[0] || fechas.sort().at(-1);
+}
+function chipsComidas(e) {
+  const c = [];
+  if (e.merienda_am) c.push(`<span class="chip comida">AM ×${e.merienda_am}</span>`);
+  if (e.almuerzo) c.push(`<span class="chip comida">Almuerzo ×${e.almuerzo}</span>`);
+  if (e.merienda_pm) c.push(`<span class="chip comida">PM ×${e.merienda_pm}</span>`);
+  return c.join(' ');
+}
+const valoresDefinidos = () => Number(estado.ajustes.valor_merienda) > 0 || Number(estado.ajustes.valor_almuerzo) > 0;
+
 async function vistaAlmuerzos(silencioso) {
+  if (!estado.fechaAlAuto) {
+    const fechas = [...new Set((await api('/entregas')).map((e) => e.fecha))];
+    estado.fechaAl = fechaInicial(fechas, estado.fechaAl); estado.fechaAlAuto = true;
+  }
   const [lista, todas] = await Promise.all([api('/entregas?fecha=' + estado.fechaAl), api('/entregas')]);
   const fechas = [...new Set(todas.map((e) => e.fecha))];
+  const lugares = [...new Set(lista.map((e) => e.ubicacion || 'Sin lugar'))];
+  if (estado.lugarAl && !lugares.includes(estado.lugarAl)) estado.lugarAl = '';
   const q = norm(estado.busqueda);
-  const filtradas = lista.filter((e) => !q || norm(`${e.beneficiario} ${e.documento || ''} ${e.cargo || ''}`).includes(q));
-  const ent = lista.filter((e) => e.estado === 'entregado');
-  const pen = lista.filter((e) => e.estado === 'pendiente');
-  const suma = (arr) => arr.reduce((s, e) => s + e.monto, 0);
+  const filtradas = lista.filter((e) => (!estado.lugarAl || (e.ubicacion || 'Sin lugar') === estado.lugarAl) &&
+    (!q || norm(`${e.beneficiario} ${e.documento || ''} ${e.cargo || ''} ${e.grupo || ''} ${e.recibido_por || ''}`).includes(q)));
+  const vivas = filtradas.filter((e) => e.estado !== 'anulada');
+  const ent = vivas.filter((e) => e.estado === 'entregado');
+  const pen = vivas.filter((e) => e.estado === 'pendiente');
+  const suma = (arr, k) => arr.reduce((s, e) => s + (e[k] || 0), 0);
   const y = window.scrollY;
   const enfoque = document.activeElement && document.activeElement.id === 'buscar';
+  // agrupa por lugar, conservando el orden del servidor (pendientes primero)
+  const grupos = new Map();
+  for (const e of filtradas) { const k = e.ubicacion || 'Sin lugar'; if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(e); }
   pintar(`
-    <div class="fila entre"><h1>Almuerzos</h1>
+    <div class="fila entre"><h1>Alimentación</h1>
       <div class="fila">${esAdmin() ? '<a class="btn chico" href="#/almuerzos/importar">Importar</a>' : ''}
       <a class="btn primario chico" href="#/almuerzos/nueva">+ Persona</a></div>
     </div>
     ${barraFechas(estado.fechaAl, fechas, 'fecha-al')}
+    ${!valoresDefinidos() ? `<div class="aviso">Aún no hay valor por merienda ni por almuerzo, así que los montos salen en $0.
+      ${esAdmin() ? '<a href="#/ajustes">Definir valores</a>' : 'Pídale al administrador que los defina.'}</div>` : ''}
     <div class="resumen">
-      <div><b>${ent.length}</b><span>Entregados · ${pesos(suma(ent))}</span></div>
-      <div><b>${pen.length}</b><span>Pendientes · ${pesos(suma(pen))}</span></div>
-      <div><b>${pesos(suma(ent) + suma(pen))}</b><span>Total del día</span></div>
+      <div><b>${ent.length}/${vivas.length}</b><span>Firmados</span></div>
+      <div><b>${suma(vivas, 'merienda_am')}·${suma(vivas, 'almuerzo')}·${suma(vivas, 'merienda_pm')}</b><span>AM · Almuerzo · PM</span></div>
+      <div><b>${pesos(suma(ent, 'monto'))}</b><span>Entregado de ${pesos(suma(vivas, 'monto'))}</span></div>
     </div>
-    <input id="buscar" type="search" placeholder="Buscar por nombre, cédula o cargo" value="${h(estado.busqueda)}">
-    <div style="margin-top:10px">
-    ${filtradas.length ? filtradas.map((e) => `<a class="tarjeta" href="#/almuerzos/${e.id}">
-        <div class="fila entre"><span class="titulo">${h(e.beneficiario)}</span><span class="chip est-${h(e.estado)}">${e.estado === 'entregado' ? '✔ Firmado' : e.estado === 'anulada' ? 'Anulada' : 'Pendiente'}</span></div>
-        <div class="fila entre suave pequeno"><span>${h(e.cargo || '')}${e.documento ? ' · CC ' + h(e.documento) : ''}</span><b style="color:var(--texto)">${pesos(e.monto)}</b></div>
-        ${e.estado === 'entregado' ? `<div class="suave pequeno">${h(utcALocal(e.firmado_en))} · por ${h(e.entregado_por_nombre || '')}</div>` : ''}
-      </a>`).join('') : '<div class="tarjeta suave">No hay personas para esta fecha. Use “+ Persona” o importe la lista.</div>'}
-    </div>`);
+    <div class="fila" style="margin-bottom:8px">
+      <select id="lugar-al" class="crece" aria-label="Filtrar por lugar">
+        <option value="">Todos los lugares (${lista.length})</option>
+        ${lugares.map((l) => `<option ${l === estado.lugarAl ? 'selected' : ''}>${h(l)}</option>`).join('')}
+      </select>
+    </div>
+    <input id="buscar" type="search" placeholder="Buscar por nombre, grupo o cédula" value="${h(estado.busqueda)}">
+    ${filtradas.length ? [...grupos].map(([lugar, items]) => `
+      <h2>${h(lugar)} <span class="suave pequeno">${items.filter((e) => e.estado === 'entregado').length}/${items.filter((e) => e.estado !== 'anulada').length} firmados · ${pen.length && items.some((e) => e.estado === 'pendiente') ? items.filter((e) => e.estado === 'pendiente').length + ' pendientes' : 'completo'}</span></h2>
+      ${items.map((e) => `<a class="tarjeta${e.observacion && e.estado === 'pendiente' ? ' con-obs' : ''}" href="#/almuerzos/${e.id}">
+        <div class="fila entre"><span class="titulo">${h(e.beneficiario)}${e.es_grupo ? ' <span class="chip">grupo</span>' : ''}</span>
+          <span class="chip est-${h(e.estado)}">${e.estado === 'entregado' ? '✔ Firmado' : e.estado === 'anulada' ? 'Anulada' : 'Pendiente'}</span></div>
+        <div class="fila entre suave pequeno"><span>${h(e.grupo || e.cargo || '')}${e.documento ? ' · CC ' + h(e.documento) : ''}</span><b style="color:var(--texto)">${pesos(e.monto)}</b></div>
+        <div style="margin-top:6px">${chipsComidas(e)}</div>
+        ${e.estado === 'entregado' ? `<div class="suave pequeno">${h(utcALocal(e.firmado_en))} · por ${h(e.entregado_por_nombre || '')}${e.recibido_por ? ' · recibió ' + h(e.recibido_por) : ''}</div>` : ''}
+        ${e.observacion && e.estado === 'pendiente' ? `<div class="obs pequeno">⚠️ ${h(e.observacion)}</div>` : ''}
+      </a>`).join('')}`).join('') : '<div class="tarjeta suave" style="margin-top:10px">No hay entregas para esta fecha. Use “+ Persona” o importe la lista.</div>'}
+  `);
   if (silencioso) window.scrollTo(0, y);
   const b = document.getElementById('buscar');
   if (enfoque) { b.focus(); b.setSelectionRange(b.value.length, b.value.length); }
@@ -423,34 +475,47 @@ async function vistaAlmuerzos(silencioso) {
     estado.busqueda = b.value; clearTimeout(b._t);
     b._t = setTimeout(() => vistaAlmuerzos(true).then(() => { const n = document.getElementById('buscar'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }), 250);
   };
+  document.getElementById('lugar-al').onchange = (ev) => { estado.lugarAl = ev.target.value; vistaAlmuerzos(); };
   enlazarFechas((f) => { estado.fechaAl = f; vistaAlmuerzos(); }, 'fecha-al');
   cadaRato((s) => { if (document.activeElement?.id !== 'buscar') vistaAlmuerzos(s); });
 }
 
 async function vistaFormEntrega(id) {
-  const e = id ? await api('/entregas/' + id) : { fecha: estado.fechaAl, monto: estado.ajustes.monto_defecto, concepto: 'Almuerzo' };
+  const e = id ? await api('/entregas/' + id)
+    : { fecha: estado.fechaAl, ubicacion: estado.lugarAl, almuerzo: 1, merienda_am: 0, merienda_pm: 0, concepto: 'Alimentación' };
   const v = (k) => h(e[k] ?? '');
   pintar(`
     <p><a href="${id ? '#/almuerzos/' + id : '#/almuerzos'}">← Volver</a></p>
-    <h1>${id ? 'Editar persona' : 'Agregar persona'}</h1>
+    <h1>${id ? 'Editar entrega' : 'Agregar persona'}</h1>
     <form id="f-en">
-      <label>Nombre completo *</label><input name="beneficiario" value="${v('beneficiario')}" required autocomplete="off">
+      <label>Nombre de la persona o del grupo *</label><input name="beneficiario" value="${v('beneficiario')}" required autocomplete="off">
+      <label class="check"><input type="checkbox" name="es_grupo" value="1" ${e.es_grupo ? 'checked' : ''}><span>Es un grupo (firma una persona por todos)</span></label>
+      <div class="dos">
+        <div><label>Grupo / entidad</label><input name="grupo" value="${v('grupo')}" placeholder="Ej. Gobernación, CUC, Equipo Ecofest"></div>
+        <div><label>Lugar</label><input name="ubicacion" value="${v('ubicacion')}" placeholder="Ej. Plaza de la Paz" list="lugares"></div>
+      </div>
+      <h2>Comidas de ese día</h2>
+      <div class="tres">
+        <div><label>Merienda AM</label><input name="merienda_am" type="number" min="0" inputmode="numeric" value="${v('merienda_am') || 0}"></div>
+        <div><label>Almuerzo</label><input name="almuerzo" type="number" min="0" inputmode="numeric" value="${v('almuerzo') || 0}"></div>
+        <div><label>Merienda PM</label><input name="merienda_pm" type="number" min="0" inputmode="numeric" value="${v('merienda_pm') || 0}"></div>
+      </div>
+      <div class="dos">
+        <div><label>Monto</label><input name="monto" inputmode="numeric" value="${id ? v('monto') : ''}" placeholder="Vacío = se calcula con los valores"></div>
+        <div><label>Fecha *</label><input type="date" name="fecha" value="${v('fecha')}" required></div>
+      </div>
       <div class="dos">
         <div><label>Cédula / documento</label><input name="documento" inputmode="numeric" value="${v('documento')}"></div>
         <div><label>Teléfono</label><input name="telefono" type="tel" value="${v('telefono')}"></div>
       </div>
-      <label>Cargo / rol / grupo</label><input name="cargo" value="${v('cargo')}" placeholder="Ej. Voluntario, Logística, Artista">
-      <div class="dos">
-        <div><label>Monto *</label><input name="monto" inputmode="numeric" value="${v('monto')}" required></div>
-        <div><label>Fecha *</label><input type="date" name="fecha" value="${v('fecha')}" required></div>
-      </div>
-      <label>Concepto</label><input name="concepto" value="${v('concepto')}">
+      <label>Observación</label><textarea name="observacion">${v('observacion')}</textarea>
       <p><button class="btn primario bloque grande">${id ? 'Guardar' : 'Guardar y firmar'}</button></p>
     </form>`);
   document.getElementById('f-en').onsubmit = async (ev) => {
     ev.preventDefault();
     try {
       const datos = formDatos(ev.target);
+      datos.es_grupo = datos.es_grupo ? 1 : 0;
       if (id) await api('/entregas/' + id, { method: 'PUT', body: datos });
       else id = (await api('/entregas', { method: 'POST', body: datos })).id;
       estado.fechaAl = datos.fecha;
@@ -465,22 +530,31 @@ async function vistaEntrega(id) {
   return vistaComprobante(e);
 }
 
+const paraQue = (e) => e.comidas || (e.concepto || 'alimentación').toLowerCase();
+function textoDeclaracion(e, quien, doc, monto, evento) {
+  const grupo = e.es_grupo ? ` como responsable del grupo ${e.beneficiario}${e.grupo && e.grupo !== e.beneficiario ? ` (${e.grupo})` : ''},` : '';
+  return `Yo, ${quien || '______'}, identificado(a) con documento ${doc || '______'},${grupo} declaro que recibí ${pesos(monto)} en efectivo para ${paraQue(e)} del evento ${evento}${e.ubicacion ? `, en ${e.ubicacion}` : ''}.`;
+}
+
 function vistaFirmar(e) {
   const evento = estado.ajustes.evento || 'Ecofest';
   document.getElementById('tabs').hidden = true; // evita tocar las pestañas por error al firmar
   pintar(`
-    <p><a href="#/almuerzos">← Almuerzos</a></p>
+    <p><a href="#/almuerzos">← Alimentación</a></p>
     <h1>Firmar recibido</h1>
     <div class="tarjeta">
-      <div class="titulo" style="font-size:20px">${h(e.beneficiario)}</div>
-      <div class="suave">${h(e.cargo || '')} ${e.telefono ? '· ' + h(e.telefono) : ''}</div>
-      <div class="fila entre" style="margin-top:6px"><span>${h(e.concepto)} · ${h(fechaLarga(e.fecha))}</span>
+      <div class="titulo" style="font-size:20px">${h(e.beneficiario)}${e.es_grupo ? ' <span class="chip">grupo</span>' : ''}</div>
+      <div class="suave">${h([e.grupo, e.ubicacion].filter(Boolean).join(' · '))}</div>
+      <div style="margin-top:6px">${chipsComidas(e)}</div>
+      <div class="fila entre" style="margin-top:6px"><span>${h(fechaLarga(e.fecha))}</span>
         <a class="pequeno" href="#/almuerzos/${e.id}/editar">Corregir datos</a></div>
+      ${e.observacion ? `<div class="obs pequeno" style="margin-top:8px">⚠️ ${h(e.observacion)}</div>` : ''}
     </div>
     <form id="f-firma">
+      ${e.es_grupo ? `<label>Nombre de quien recibe por el grupo *</label><input name="recibido_por" required autocomplete="off">` : ''}
       <div class="dos">
         <div><label>Cédula *</label><input name="documento" inputmode="numeric" value="${h(e.documento || '')}" required></div>
-        <div><label>Monto entregado *</label><input name="monto" inputmode="numeric" value="${h(e.monto)}" required></div>
+        <div><label>Monto entregado *</label><input name="monto" inputmode="numeric" value="${e.monto ? h(e.monto) : ''}" required></div>
       </div>
       <label class="check" style="margin-top:14px"><input type="checkbox" id="acepto" required>
         <span id="texto-decl"></span></label>
@@ -492,10 +566,10 @@ function vistaFirmar(e) {
   const form = document.getElementById('f-firma');
   const decl = () => {
     const m = Number(String(form.monto.value).replace(/[^\d]/g, '')) || 0;
-    document.getElementById('texto-decl').textContent =
-      `Yo, ${e.beneficiario}, identificado(a) con documento ${form.documento.value || '______'}, declaro que recibí ${pesos(m)} en efectivo para ${e.concepto.toLowerCase()} del evento ${evento}.`;
+    const quien = e.es_grupo ? form.recibido_por.value : e.beneficiario;
+    document.getElementById('texto-decl').textContent = textoDeclaracion(e, quien, form.documento.value, m, evento);
   };
-  form.documento.oninput = decl; form.monto.oninput = decl; decl();
+  form.oninput = decl; decl();
 
   const firma = lienzoFirma(document.getElementById('lienzo'));
   document.getElementById('limpiar').onclick = firma.limpiar;
@@ -511,7 +585,9 @@ function vistaFirmar(e) {
     if (firma.vacia()) return toast('Falta la firma', true);
     const btn = document.getElementById('confirmar'); btn.disabled = true;
     try {
-      await api(`/entregas/${e.id}/firmar`, { method: 'POST', body: { firma: firma.png(), documento: form.documento.value, monto: form.monto.value, ...geo } });
+      await api(`/entregas/${e.id}/firmar`, { method: 'POST', body: {
+        firma: firma.png(), documento: form.documento.value, monto: form.monto.value,
+        recibido_por: e.es_grupo ? form.recibido_por.value : undefined, ...geo } });
       toast('Entrega registrada ✔');
       document.getElementById('tabs').hidden = false;
       vistaEntrega(e.id);
@@ -550,18 +626,21 @@ function vistaComprobante(e) {
   const a = estado.ajustes;
   const num = `ECO-${String(e.id).padStart(4, '0')}`;
   pintar(`
-    <p class="no-print"><a href="#/almuerzos">← Almuerzos</a></p>
+    <p class="no-print"><a href="#/almuerzos">← Alimentación</a></p>
     <div class="comprobante">
       <div class="cab">
         <div>${a.logo ? `<img src="${h(a.logo)}" alt="${h(a.evento)}">` : `<b style="font-size:22px">${h(a.evento)}</b>`}</div>
         <div class="num">Comprobante<br>${num}</div>
       </div>
       ${e.estado === 'anulada' ? `<div class="anulado">ANULADO · ${h(e.anulada_motivo || '')}</div>` : ''}
-      <p style="margin:12px 0 0">Recibo de dinero para <b>${h(e.concepto.toLowerCase())}</b> — evento <b>${h(a.evento)}</b>.</p>
+      <p style="margin:12px 0 0">Recibo de dinero para <b>${h(paraQue(e))}</b> del evento <b>${h(a.evento)}</b>.</p>
       <table>
-        <tr><td>Recibió</td><td><b>${h(e.beneficiario)}</b></td></tr>
+        ${e.es_grupo ? `<tr><td>Grupo</td><td><b>${h(e.beneficiario)}</b>${e.grupo && e.grupo !== e.beneficiario ? ' · ' + h(e.grupo) : ''}</td></tr>` : ''}
+        <tr><td>Recibió</td><td><b>${h(e.es_grupo ? e.recibido_por || '—' : e.beneficiario)}</b></td></tr>
         <tr><td>Documento</td><td>${h(e.documento || '—')}</td></tr>
-        ${e.cargo ? `<tr><td>Cargo / rol</td><td>${h(e.cargo)}</td></tr>` : ''}
+        ${!e.es_grupo && (e.grupo || e.cargo) ? `<tr><td>Grupo / cargo</td><td>${h(e.grupo || e.cargo)}</td></tr>` : ''}
+        ${e.ubicacion ? `<tr><td>Lugar</td><td>${h(e.ubicacion)}</td></tr>` : ''}
+        ${e.comidas ? `<tr><td>Comidas</td><td>${h(e.comidas)}</td></tr>` : ''}
         ${e.telefono ? `<tr><td>Teléfono</td><td>${h(e.telefono)}</td></tr>` : ''}
         <tr><td>Valor</td><td class="monto">${pesos(e.monto)}</td></tr>
         <tr><td>Fecha del evento</td><td>${h(fechaLarga(e.fecha))}</td></tr>
@@ -569,13 +648,13 @@ function vistaComprobante(e) {
         <tr><td>Entregado por</td><td>${h(e.entregado_por_nombre || '—')}</td></tr>
         ${e.lat ? `<tr><td>Ubicación</td><td><a href="https://www.google.com/maps?q=${e.lat},${e.lng}" target="_blank" rel="noopener">${Number(e.lat).toFixed(5)}, ${Number(e.lng).toFixed(5)}</a></td></tr>` : ''}
       </table>
-      <p class="legal">Yo, ${h(e.beneficiario)}, identificado(a) con documento ${h(e.documento || '')}, declaro que recibí ${pesos(e.monto)} en efectivo para ${h(e.concepto.toLowerCase())} del evento ${h(a.evento)}.</p>
+      <p class="legal">${h(textoDeclaracion(e, e.es_grupo ? e.recibido_por : e.beneficiario, e.documento, e.monto, a.evento))}</p>
       <div class="firma">${e.firma ? `<img src="${e.firma}" alt="Firma de ${h(e.beneficiario)}">` : ''}
-        <p style="text-align:center;margin:4px 0 0">${h(e.beneficiario)}<br><span class="suave pequeno">Firma de quien recibe</span></p></div>
+        <p style="text-align:center;margin:4px 0 0">${h(e.es_grupo ? e.recibido_por || '' : e.beneficiario)}<br><span class="suave pequeno">Firma de quien recibe</span></p></div>
     </div>
     <div class="acciones no-print">
       <button class="btn primario" onclick="window.print()">🖨️ Imprimir / PDF</button>
-      ${e.telefono ? `<a class="btn" target="_blank" rel="noopener" href="${waLink(e.telefono)}?text=${encodeURIComponent(`${a.evento}: confirmamos la entrega de ${pesos(e.monto)} para ${e.concepto.toLowerCase()} a ${e.beneficiario}. Comprobante ${num}.`)}">💬 Avisar por WhatsApp</a>` : ''}
+      ${e.telefono ? `<a class="btn" target="_blank" rel="noopener" href="${waLink(e.telefono)}?text=${encodeURIComponent(`${a.evento}: confirmamos la entrega de ${pesos(e.monto)} para ${paraQue(e)} a ${e.es_grupo ? e.recibido_por + ' (' + e.beneficiario + ')' : e.beneficiario}. Comprobante ${num}.`)}">💬 Avisar por WhatsApp</a>` : ''}
       ${esAdmin() && e.estado === 'entregado' ? '<button class="btn peligro" id="anular">Anular</button>' : ''}
     </div>`);
   const an = document.getElementById('anular');
@@ -589,10 +668,10 @@ function vistaComprobante(e) {
 
 function vistaImportarEntregas() {
   vistaImportar({
-    titulo: 'Importar lista de almuerzos', volver: '#/almuerzos', mapa: MAPA_AL, ruta: '/entregas/importar',
-    columnas: 'Nombre, Documento, Teléfono, Cargo, Monto, Fecha, Concepto (si no hay Fecha se usa la seleccionada; si no hay Monto, el valor por defecto)',
-    ejemplo: 'Nombre\tDocumento\tCargo\tMonto\nAna Pérez\t1045123456\tVoluntaria\t20000',
-    completar: (f) => ({ fecha: estado.fechaAl, monto: estado.ajustes.monto_defecto, ...Object.fromEntries(Object.entries(f).filter(([, v]) => v)) }),
+    titulo: 'Importar lista de alimentación', volver: '#/almuerzos', mapa: MAPA_AL, ruta: '/entregas/importar',
+    columnas: 'Nombre, Documento, Teléfono, Grupo, Lugar, Merienda AM, Almuerzo, Merienda PM, Monto, Fecha, Observación (sin Fecha se usa la seleccionada; sin Monto se calcula con los valores de Ajustes)',
+    ejemplo: 'Nombre\tGrupo\tLugar\tMerienda AM\tAlmuerzo\tMerienda PM\nAna Pérez\tEquipo Ecofest\tPlaza de la Paz\t1\t1\t1',
+    completar: (f) => ({ fecha: estado.fechaAl, ...Object.fromEntries(Object.entries(f).filter(([, v]) => v)) }),
   });
 }
 
@@ -602,11 +681,11 @@ function vistaMas() {
     <h1>Más</h1>
     <a class="tarjeta" href="#/vehiculos"><div class="titulo">🚐 Vehículos y conductores</div><div class="suave">Placas, conductores y teléfonos</div></a>
     ${esAdmin() ? `<a class="tarjeta" href="#/usuarios"><div class="titulo">👥 Usuarios del equipo</div><div class="suave">Quién entra a la app</div></a>
-    <a class="tarjeta" href="#/ajustes"><div class="titulo">🎨 Marca y ajustes</div><div class="suave">Logo, colores, monto por defecto</div></a>` : ''}
+    <a class="tarjeta" href="#/ajustes"><div class="titulo">🎨 Valores y marca</div><div class="suave">Valor de merienda y almuerzo, logo, colores</div></a>` : ''}
     <h2>Descargar reportes (Excel)</h2>
     <div class="acciones">
       <a class="btn" href="/api/export/traslados.csv">⬇️ Traslados</a>
-      <a class="btn" href="/api/export/entregas.csv">⬇️ Entregas de almuerzo</a>
+      <a class="btn" href="/api/export/entregas.csv">⬇️ Entregas de alimentación</a>
       ${esAdmin() ? '<a class="btn" href="/api/export/respaldo.db">💾 Respaldo completo</a>' : ''}
     </div>
     <p><button class="btn peligro bloque" id="salir">Cerrar sesión</button></p>`);
@@ -723,7 +802,12 @@ async function vistaAjustes() {
         <div><label>Color principal</label><input type="color" name="color_primario" value="${h(a.color_primario)}"></div>
         <div><label>Color de acento</label><input type="color" name="color_secundario" value="${h(a.color_secundario)}"></div>
       </div>
-      <label>Monto por defecto del almuerzo</label><input name="monto_defecto" inputmode="numeric" value="${h(a.monto_defecto)}">
+      <div class="dos">
+        <div><label>Valor de cada merienda (AM o PM)</label><input name="valor_merienda" inputmode="numeric" value="${h(a.valor_merienda)}"></div>
+        <div><label>Valor de cada almuerzo</label><input name="valor_almuerzo" inputmode="numeric" value="${h(a.valor_almuerzo)}"></div>
+      </div>
+      <p class="suave pequeno">Al guardar, se recalcula el monto de todas las entregas pendientes según sus comidas. Las ya firmadas no cambian.</p>
+      <label>Monto por defecto (personas agregadas sin comidas)</label><input name="monto_defecto" inputmode="numeric" value="${h(a.monto_defecto)}">
       <p><button class="btn primario bloque grande">Guardar</button></p>
       ${a.logo ? '<p><button type="button" class="btn bloque" id="quitar-logo">Quitar logo</button></p>' : ''}
     </form>`);
