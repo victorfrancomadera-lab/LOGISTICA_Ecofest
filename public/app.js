@@ -95,6 +95,8 @@ const rutas = [
   [/^#\/vehiculos\/nuevo$/, () => vistaFormVehiculo()],
   [/^#\/vehiculos\/(\d+)$/, (m) => vistaFormVehiculo(m[1])],
   [/^#\/usuarios$/, vistaUsuarios],
+  [/^#\/usuarios\/nuevo$/, () => vistaFormUsuario()],
+  [/^#\/usuarios\/(\d+)$/, (m) => vistaFormUsuario(m[1])],
   [/^#\/ajustes$/, vistaAjustes],
 ];
 async function enrutar() {
@@ -759,36 +761,54 @@ async function vistaUsuarios() {
   const lista = await api('/usuarios');
   pintar(`
     <p><a href="#/mas">← Más</a></p>
-    <h1>Usuarios</h1>
-    ${lista.map((u) => `<div class="tarjeta">
-      <div class="fila entre"><div><div class="titulo">${h(u.nombre)}</div><div class="suave pequeno">usuario: ${h(u.usuario)} · ${u.rol}${u.activo ? '' : ' · INACTIVO'}</div></div>
-      <div class="fila"><button class="btn chico" data-pin="${u.id}">Cambiar clave</button>
-      ${u.id !== estado.user.id ? `<button class="btn chico ${u.activo ? 'peligro' : ''}" data-act="${u.id}" data-v="${u.activo ? 0 : 1}">${u.activo ? 'Desactivar' : 'Activar'}</button>` : ''}</div></div>
-    </div>`).join('')}
-    <h2>Agregar persona del equipo</h2>
-    <form id="f-us" class="tarjeta">
-      <label>Nombre</label><input name="nombre" required>
+    <div class="fila entre"><h1>Usuarios</h1><a class="btn primario chico" href="#/usuarios/nuevo">+ Usuario</a></div>
+    <p class="suave pequeno">Toque un usuario para cambiarle el nombre, el usuario, el perfil, la clave o desactivarlo.</p>
+    ${lista.map((u) => `<a class="tarjeta" href="#/usuarios/${u.id}">
+      <div class="fila entre"><span class="titulo">${h(u.nombre)}${u.id === estado.user.id ? ' <span class="suave pequeno">(usted)</span>' : ''}</span>
+        <span class="chip ${u.activo ? (u.rol === 'admin' ? 'est-finalizado' : 'est-programado') : 'est-anulada'}">${u.activo ? (u.rol === 'admin' ? 'Administrador' : 'Operador') : 'Inactivo'}</span></div>
+      <div class="suave pequeno">usuario: ${h(u.usuario)}${u.telefono ? ' · ' + h(u.telefono) : ''}</div>
+    </a>`).join('')}`);
+}
+
+async function vistaFormUsuario(id) {
+  if (!esAdmin()) { location.hash = '#/mas'; return; }
+  const u = id ? await api('/usuarios/' + id) : { nombre: '', usuario: '', rol: 'operador', activo: 1, telefono: '' };
+  const yo = id && Number(id) === estado.user.id;
+  pintar(`
+    <p><a href="#/usuarios">← Usuarios</a></p>
+    <h1>${id ? 'Editar usuario' : 'Nuevo usuario'}</h1>
+    <form id="f-us">
+      <label>Nombre completo</label><input name="nombre" value="${h(u.nombre)}" required>
       <div class="dos">
-        <div><label>Usuario</label><input name="usuario" autocapitalize="none" required></div>
-        <div><label>Clave</label><input name="pin" required minlength="4"></div>
+        <div><label>Usuario (para entrar)</label><input name="usuario" value="${h(u.usuario)}" autocapitalize="none" autocomplete="off" required></div>
+        <div><label>Celular</label><input name="telefono" type="tel" value="${h(u.telefono || '')}"></div>
       </div>
-      <label>Rol</label><select name="rol"><option value="operador">Operador (calle)</option><option value="admin">Administrador</option></select>
-      <p class="suave pequeno">Operador: ve todo, actualiza estados de traslados y registra/firma entregas. Administrador: además crea, edita, importa y anula.</p>
-      <button class="btn primario bloque">Crear usuario</button>
+      <label>Perfil</label>
+      <select name="rol" ${yo ? 'disabled' : ''}>
+        <option value="operador" ${u.rol === 'operador' ? 'selected' : ''}>Operador (calle)</option>
+        <option value="admin" ${u.rol === 'admin' ? 'selected' : ''}>Administrador</option>
+      </select>
+      <p class="suave pequeno">Operador: ve todo, actualiza traslados y registra recibidos con firma. Administrador: además crea, edita, importa, anula y maneja usuarios.</p>
+      <label>${id ? 'Nueva clave (déjela vacía para no cambiarla)' : 'Clave'}</label>
+      <input name="pin" type="text" autocomplete="new-password" minlength="4" ${id ? '' : 'required'} placeholder="Mínimo 4 caracteres">
+      ${id ? `<label class="check" style="margin-top:14px"><input type="checkbox" name="activo" value="1" ${u.activo ? 'checked' : ''} ${yo ? 'disabled' : ''}>
+        <span>Activo (puede entrar a la app)</span></label>` : ''}
+      ${yo ? '<p class="suave pequeno">Es su propio usuario: no puede quitarse el perfil de administrador ni desactivarse.</p>' : ''}
+      <p><button class="btn primario bloque grande">${id ? 'Guardar cambios' : 'Crear usuario'}</button></p>
     </form>`);
   document.getElementById('f-us').onsubmit = async (ev) => {
     ev.preventDefault();
-    try { await api('/usuarios', { method: 'POST', body: formDatos(ev.target) }); toast('Usuario creado'); vistaUsuarios(); }
-    catch (e) { toast(e.message, true); }
+    const datos = formDatos(ev.target);
+    if (!datos.pin) delete datos.pin;
+    if (id && !yo) datos.activo = ev.target.activo.checked ? 1 : 0;
+    if (yo) delete datos.rol;
+    try {
+      if (id) await api('/usuarios/' + id, { method: 'PUT', body: datos });
+      else await api('/usuarios', { method: 'POST', body: datos });
+      if (yo) { estado.user = await api('/yo'); document.getElementById('who').textContent = `${estado.user.nombre} · admin`; }
+      toast(id ? 'Usuario actualizado' : 'Usuario creado'); location.hash = '#/usuarios';
+    } catch (e) { toast(e.message, true); }
   };
-  $app.querySelectorAll('[data-pin]').forEach((b) => (b.onclick = async () => {
-    const pin = prompt('Nueva clave (mínimo 4 caracteres):');
-    if (!pin || pin.length < 4) return;
-    await api('/usuarios/' + b.dataset.pin, { method: 'PUT', body: { pin } }); toast('Clave cambiada');
-  }));
-  $app.querySelectorAll('[data-act]').forEach((b) => (b.onclick = async () => {
-    await api('/usuarios/' + b.dataset.act, { method: 'PUT', body: { activo: b.dataset.v === '1' } }); vistaUsuarios();
-  }));
 }
 
 async function vistaAjustes() {

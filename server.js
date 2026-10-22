@@ -102,6 +102,8 @@ for (const [col, tipo] of [['ubicacion', 'TEXT'], ['grupo', 'TEXT'], ['es_grupo'
   if (!columnasEntregas.includes(col)) db.exec(`ALTER TABLE entregas ADD COLUMN ${col} ${tipo}`);
 }
 
+if (!db.prepare('PRAGMA table_info(usuarios)').all().some((c) => c.name === 'telefono')) db.exec('ALTER TABLE usuarios ADD COLUMN telefono TEXT');
+
 // ---------- utilidades ----------
 function hashPin(pin) {
   const salt = crypto.randomBytes(16).toString('hex');
@@ -158,7 +160,7 @@ function auth(req, res, next) {
   if (token) {
     const u = db.prepare(`SELECT u.id, u.nombre, u.usuario, u.rol FROM sesiones s
       JOIN usuarios u ON u.id = s.usuario_id WHERE s.token = ? AND u.activo = 1`).get(token);
-    if (u) { req.user = u; return next(); }
+    if (u) { req.user = u; req.cookieToken = token; return next(); }
   }
   res.status(401).json({ error: 'Sesión no válida' });
 }
@@ -208,27 +210,52 @@ api.put('/ajustes', soloAdmin, (req, res) => {
 
 // --- usuarios ---
 api.get('/usuarios', soloAdmin, (req, res) => {
-  res.json(db.prepare('SELECT id, nombre, usuario, rol, activo FROM usuarios ORDER BY nombre').all());
+  res.json(db.prepare('SELECT id, nombre, usuario, rol, activo, telefono FROM usuarios ORDER BY activo DESC, nombre').all());
 });
 api.post('/usuarios', soloAdmin, (req, res) => {
-  const { nombre, usuario, pin, rol } = req.body;
+  const { nombre, usuario, pin, rol, telefono } = req.body;
   if (!nombre || !usuario || !pin) return res.status(400).json({ error: 'Nombre, usuario y clave son obligatorios' });
+  if (String(pin).length < 4) return res.status(400).json({ error: 'La clave debe tener mínimo 4 caracteres' });
   try {
-    const r = db.prepare('INSERT INTO usuarios (nombre, usuario, pin_hash, rol) VALUES (?,?,?,?)')
-      .run(String(nombre).trim(), String(usuario).trim().toLowerCase(), hashPin(pin), rol === 'admin' ? 'admin' : 'operador');
+    const r = db.prepare('INSERT INTO usuarios (nombre, usuario, pin_hash, rol, telefono) VALUES (?,?,?,?,?)')
+      .run(String(nombre).trim(), String(usuario).trim().toLowerCase().replace(/\s+/g, ''), hashPin(pin), rol === 'admin' ? 'admin' : 'operador', txt(telefono));
     res.json({ id: Number(r.lastInsertRowid) });
   } catch (e) {
     res.status(400).json({ error: 'Ese usuario ya existe' });
   }
 });
+api.get('/usuarios/:id', soloAdmin, (req, res) => {
+  const u = db.prepare('SELECT id, nombre, usuario, rol, activo, telefono FROM usuarios WHERE id = ?').get(req.params.id);
+  if (!u) return res.status(404).json({ error: 'No existe' });
+  res.json(u);
+});
 api.put('/usuarios/:id', soloAdmin, (req, res) => {
-  const { nombre, rol, activo, pin } = req.body;
   const u = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(req.params.id);
   if (!u) return res.status(404).json({ error: 'No existe' });
-  db.prepare('UPDATE usuarios SET nombre = ?, rol = ?, activo = ? WHERE id = ?').run(
-    nombre ?? u.nombre, rol ?? u.rol, activo === undefined ? u.activo : (activo ? 1 : 0), u.id);
-  if (pin) db.prepare('UPDATE usuarios SET pin_hash = ? WHERE id = ?').run(hashPin(pin), u.id);
-  if (activo === false || activo === 0) db.prepare('DELETE FROM sesiones WHERE usuario_id = ?').run(u.id);
+  const b = req.body;
+  const nombre = 'nombre' in b ? txt(b.nombre) : u.nombre;
+  const usuario = 'usuario' in b ? (txt(b.usuario) || '').toLowerCase().replace(/\s+/g, '') : u.usuario;
+  const rol = 'rol' in b ? (b.rol === 'admin' ? 'admin' : 'operador') : u.rol;
+  const activo = 'activo' in b ? (b.activo && b.activo !== '0' ? 1 : 0) : u.activo;
+  const telefono = 'telefono' in b ? txt(b.telefono) : u.telefono;
+  if (!nombre || !usuario) return res.status(400).json({ error: 'Nombre y usuario son obligatorios' });
+  if (b.pin && String(b.pin).length < 4) return res.status(400).json({ error: 'La clave debe tener mínimo 4 caracteres' });
+  // Nunca dejar la app sin un administrador activo
+  const quedaAdmin = rol === 'admin' && activo;
+  if (u.rol === 'admin' && u.activo && !quedaAdmin) {
+    const otros = db.prepare(`SELECT COUNT(*) n FROM usuarios WHERE rol = 'admin' AND activo = 1 AND id != ?`).get(u.id).n;
+    if (!otros) return res.status(400).json({ error: 'Debe quedar al menos un administrador activo' });
+  }
+  if (u.id === req.user.id && !quedaAdmin) return res.status(400).json({ error: 'No puede quitarse a sí mismo el perfil de administrador ni desactivarse' });
+  try {
+    db.prepare('UPDATE usuarios SET nombre = ?, usuario = ?, rol = ?, activo = ?, telefono = ? WHERE id = ?')
+      .run(nombre, usuario, rol, activo, telefono, u.id);
+  } catch (e) {
+    return res.status(400).json({ error: 'Ese nombre de usuario ya lo tiene otra persona' });
+  }
+  if (b.pin) db.prepare('UPDATE usuarios SET pin_hash = ? WHERE id = ?').run(hashPin(b.pin), u.id);
+  // Si cambió el acceso (desactivado, clave o rol), se cierran sus sesiones abiertas
+  if (!activo || b.pin || rol !== u.rol) db.prepare('DELETE FROM sesiones WHERE usuario_id = ? AND token != ?').run(u.id, req.cookieToken || '');
   res.json({ ok: true });
 });
 
