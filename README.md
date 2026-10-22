@@ -1,5 +1,8 @@
 # Ecofest · Logística
 
+Producción: https://logisticaecofest-production.up.railway.app (Railway, despliegue automático desde `main`).
+La versión desplegada se ve al final de **Más** y en `/healthz`.
+
 App web para el equipo en calle:
 
 1. **Traslados**: vehículo (placa), conductor, a quién se recoge, hora y lugar de recogida, destino, a qué hora y dónde se recoge de nuevo, equipos o carga y notas. El estado se actualiza desde el celular (en camino, recogido, entregado, regreso…) y queda en una bitácora con quién lo hizo y a qué hora.
