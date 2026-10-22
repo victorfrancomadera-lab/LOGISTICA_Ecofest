@@ -86,7 +86,7 @@ a.tarjeta:active { transform: scale(.99); }
 .tarjeta.con-obs { border-color: #E9C46A; }
 .est-anulada { background: #EEE; color: #777; }
 
-.barra-fechas { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 10px; }
+.barra-fechas { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 .barra-fechas button { flex: 0 0 auto; }
 .barra-fechas .btn.activo { background: var(--primario); color: #fff; border-color: var(--primario); }
 

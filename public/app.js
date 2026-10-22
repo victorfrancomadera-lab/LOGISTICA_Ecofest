@@ -149,11 +149,17 @@ function iniciarSesion() {
 }
 
 // ---------- selector de fechas ----------
+// "Vie 23": corto para que todos los días quepan en la pantalla del celular
+function diaCorto(f) {
+  const d = new Date(f + 'T12:00:00');
+  const s = d.toLocaleDateString('es-CO', { weekday: 'short' }).replace('.', '');
+  return s.charAt(0).toUpperCase() + s.slice(1) + ' ' + d.getDate();
+}
 function barraFechas(actual, fechas, idCampo) {
   const lista = [...new Set([hoy(), ...fechas, actual])].filter(Boolean).sort();
   return `<div class="barra-fechas">
     ${lista.map((f) => `<button type="button" class="btn chico ${f === actual ? 'activo' : ''}" data-fecha="${f}">
-      ${f === hoy() ? 'Hoy' : new Date(f + 'T12:00:00').toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric', month: 'short' })}</button>`).join('')}
+      ${f === hoy() ? 'Hoy' : diaCorto(f)}</button>`).join('')}
     <input type="date" id="${idCampo}" value="${actual}" style="width:auto;min-height:36px;padding:4px 8px" aria-label="Elegir fecha">
   </div>`;
 }
