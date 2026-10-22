@@ -147,6 +147,11 @@ function iniciarSesion() {
   document.getElementById('topbar').hidden = false;
   document.getElementById('tabs').hidden = false;
   document.getElementById('who').textContent = `${estado.user.nombre}${esAdmin() ? ' · admin' : ''}`;
+  // Aviso al administrador si el servidor no tiene dónde guardar los datos de forma permanente
+  if (esAdmin() && estado.user.persistente === false && !document.getElementById('aviso-volumen')) {
+    document.getElementById('topbar').insertAdjacentHTML('afterend', `<div id="aviso-volumen" class="aviso-volumen">⚠️ Railway no tiene volumen: los datos se borran en cada despliegue.
+      Cree un volumen montado en <b>/data</b> en el servicio.</div>`);
+  }
   enrutar();
 }
 

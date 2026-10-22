@@ -7,7 +7,12 @@ const express = require('express');
 const { DatabaseSync } = require('node:sqlite');
 
 const PORT = process.env.PORT || 3000;
-const DATA_DIR = process.env.DATA_DIR || process.env.RAILWAY_VOLUME_MOUNT_PATH || path.join(__dirname, 'data');
+// En Railway, si hay un volumen montado se usa siempre esa ruta (así no importa si DATA_DIR quedó mal escrita).
+// Sin volumen, los archivos del contenedor se borran en cada despliegue.
+const DATA_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH || process.env.DATA_DIR || path.join(__dirname, 'data');
+const EN_RAILWAY = !!(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_NAME || process.env.RAILWAY_PROJECT_ID);
+const PERSISTENTE = !EN_RAILWAY || !!process.env.RAILWAY_VOLUME_MOUNT_PATH;
+if (!PERSISTENTE) console.warn('ATENCIÓN: no hay volumen montado en Railway. Los datos se borrarán en el próximo despliegue.');
 fs.mkdirSync(DATA_DIR, { recursive: true });
 const DB_FILE = path.join(DATA_DIR, 'ecofest.db');
 
@@ -181,7 +186,7 @@ api.post('/login', (req, res) => {
   db.prepare('INSERT INTO sesiones (token, usuario_id) VALUES (?,?)').run(token, u.id);
   const segura = req.secure ? '; Secure' : '';
   res.setHeader('Set-Cookie', `eco_sesion=${token}; HttpOnly; Path=/; Max-Age=${60 * 60 * 24 * 30}; SameSite=Lax${segura}`);
-  res.json({ id: u.id, nombre: u.nombre, usuario: u.usuario, rol: u.rol });
+  res.json({ id: u.id, nombre: u.nombre, usuario: u.usuario, rol: u.rol, version: VERSION, persistente: PERSISTENTE });
 });
 api.post('/logout', (req, res) => {
   const token = leerCookie(req, 'eco_sesion');
@@ -196,7 +201,7 @@ api.get('/ajustes-publicos', (req, res) => {
 });
 
 api.use(auth);
-api.get('/yo', (req, res) => res.json({ ...req.user, version: VERSION }));
+api.get('/yo', (req, res) => res.json({ ...req.user, version: VERSION, persistente: PERSISTENTE }));
 
 // --- ajustes ---
 api.get('/ajustes', (req, res) => res.json(getAjustes()));
@@ -552,7 +557,7 @@ cargarSemilla();
 app.use('/api', api);
 // Versión desplegada (Railway define RAILWAY_GIT_COMMIT_SHA); sirve para saber qué versión tiene abierta cada celular
 const VERSION = (process.env.RAILWAY_GIT_COMMIT_SHA || '').slice(0, 7) || 'local';
-app.get('/healthz', (req, res) => res.json({ ok: true, version: VERSION }));
+app.get('/healthz', (req, res) => res.json({ ok: true, version: VERSION, datos_persistentes: PERSISTENTE, carpeta_datos: DATA_DIR }));
 // Sin caché: cada vez que se abre la app, el celular revisa si hay versión nueva
 const sinCache = (res) => res.setHeader('Cache-Control', 'no-cache');
 const INDEX = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8')

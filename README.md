@@ -13,9 +13,9 @@ Los dos módulos se exportan a Excel (CSV) desde **Más**.
 ## Desplegar en Railway (5 minutos)
 
 1. En Railway: **New Project → Deploy from GitHub repo →** `LOGISTICA_Ecofest`.
-2. En el servicio: **Settings → Volumes → Add Volume**, ruta de montaje **`/data`**. *Sin el volumen se borran los datos en cada despliegue.*
+2. En el servicio: **Settings → Volumes → Add Volume**, ruta de montaje **`/data`**. *Sin el volumen se borran los datos en cada despliegue; la app lo avisa con una franja roja al administrador y en `/healthz` (`datos_persistentes`).*
 3. **Variables**:
-   - `DATA_DIR` = `/data`
+   - `DATA_DIR` no hace falta: si hay volumen, la app usa su ruta sola (`RAILWAY_VOLUME_MOUNT_PATH`).
    - `ADMIN_USER` = `admin` (o el que quiera)
    - `ADMIN_PIN` = una clave segura (solo se usa la primera vez que arranca)
 4. **Settings → Networking → Generate Domain**. Ese enlace es el que se comparte al equipo.
