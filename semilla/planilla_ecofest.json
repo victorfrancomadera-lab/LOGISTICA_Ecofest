@@ -906,74 +906,129 @@
  ],
  "transporte": [
   {
-   "actividad": "Bosques de Miramar",
+   "actividad": "Estructuras para Ecofest",
+   "fecha": "2026-10-22",
+   "hora": "07:00",
+   "destino": "Las Nieves",
+   "tipo": "carga",
+   "personal_planilla": "",
+   "recogida_planilla": "",
+   "paradas": [],
+   "cruce": "Traslado de carga: la planilla no dice desde dónde salen las estructuras ni quién las acompaña."
+  },
+  {
+   "actividad": "Felipe Restrepo",
    "fecha": "2026-10-23",
-   "destino": "Bosque Urbano Miramar",
-   "hora_actividad": "06:00",
-   "personal_planilla": "2 personas Chavelita",
-   "recogida_planilla": "Edificio Mallorquín",
+   "hora": "06:00",
+   "destino": "Cámara de Comercio",
+   "tipo": "personal",
+   "personal_planilla": "Felipe Posada",
+   "recogida_planilla": "Aeropuerto",
    "paradas": [
     [
-     "Edificio Mallorquín",
+     "Aeropuerto",
+     "Felipe Posada"
+    ]
+   ],
+   "cruce": "La actividad dice \"Felipe Restrepo\" y el personal \"Felipe Posada\": confirmar el nombre y el número de vuelo."
+  },
+  {
+   "actividad": "Material para siembra",
+   "fecha": "2026-10-23",
+   "hora": "17:00",
+   "destino": "Invernadero Jardín Botánico",
+   "tipo": "carga",
+   "personal_planilla": "",
+   "recogida_planilla": "",
+   "paradas": [],
+   "cruce": "Traslado de carga: la planilla no dice desde dónde sale el material."
+  },
+  {
+   "actividad": "Bosques de Miramar",
+   "fecha": "2026-10-24",
+   "hora": "05:20",
+   "destino": "Miramar",
+   "tipo": "personal",
+   "personal_planilla": "2 personas Chavelita",
+   "recogida_planilla": "Edificio Amore Mallorquín",
+   "paradas": [
+    [
+     "Edificio Amore Mallorquín",
      "Chavelita (2 personas)"
     ]
    ],
-   "conductor_planilla": "Julio (según planilla de alimentos)",
-   "cruce": "En alimentos figuran 3 de Chavelita + Javier Fernández + Julio (conductor). Transporte dice 2 de Chavelita. Javier Fernández no tiene recogida."
+   "cruce": "Cambió de día: antes era viernes. La planilla de alimentos sigue con Bosque Urbano Miramar el viernes 6:00 a. m. (3 de Chavelita, Javier Fernández y Julio)."
   },
   {
-   "actividad": "Yoga",
+   "actividad": "Yoga (Miramar)",
    "fecha": "2026-10-24",
-   "destino": "Ecoparque Ciénaga de Mallorquín",
-   "hora_actividad": null,
-   "personal_planilla": "2 personas Chavelita, Jessica, Marcela",
-   "recogida_planilla": "Edificio Mallorquín, Montecristo, San Pacho",
+   "hora": "06:30",
+   "destino": "Miramar",
+   "tipo": "personal",
+   "personal_planilla": "2 personas Chavelita",
+   "recogida_planilla": "Edificio Amore Mallorquín, Montecristo, San Pacho",
    "paradas": [
     [
-     "Edificio Mallorquín",
+     "Edificio Amore Mallorquín",
      "Chavelita (2 personas)"
     ],
+    [
+     "Montecristo",
+     "¿quién?"
+    ],
+    [
+     "San Pacho",
+     "¿quién?"
+    ]
+   ],
+   "cruce": "Hay dos filas de Yoga el sábado. Esta va a Miramar a las 6:30 y lista Montecristo y San Pacho sin persona: parece repetida de la otra fila. Confirmar."
+  },
+  {
+   "actividad": "Yoga (Mallorquín)",
+   "fecha": "2026-10-24",
+   "hora": "06:00",
+   "destino": "Ciénaga de Mallorquín",
+   "tipo": "personal",
+   "personal_planilla": "Jessica, Marcela, Juan",
+   "recogida_planilla": "Montecristo, San Pacho",
+   "paradas": [
     [
      "Montecristo",
      "Jessica"
     ],
     [
      "San Pacho",
-     "Marcela"
+     "Marcela y Juan"
     ]
    ],
-   "conductor_planilla": "Julio (según planilla de alimentos)",
-   "cruce": "En alimentos figuran 3 de Chavelita. Transporte dice 2."
+   "cruce": "Juan no tiene lugar propio: quedó con Marcela en San Pacho. Confirmar."
   },
   {
    "actividad": "Social Plogging",
    "fecha": "2026-10-25",
+   "hora": "05:00",
    "destino": "Plaza de la Paz",
-   "hora_actividad": null,
+   "tipo": "personal",
    "personal_planilla": "2 personas Chavelita, Marcela, Juan",
-   "recogida_planilla": "Edificio Mallorquín, San Pacho",
+   "recogida_planilla": "Edificio Amore Mallorquín, San Pacho",
    "paradas": [
     [
-     "Edificio Mallorquín",
+     "Edificio Amore Mallorquín",
      "Chavelita (2 personas)"
     ],
     [
      "San Pacho",
-     "Marcela"
-    ],
-    [
-     "¿?",
-     "Juan (sin lugar de recogida)"
+     "Marcela y Juan"
     ]
    ],
-   "conductor_planilla": "Por definir",
-   "cruce": "En alimentos figuran 3 de Chavelita + Juan + Marcela + Emanuel + conductor. Juan no tiene lugar de recogida."
+   "cruce": "Misma hora (5:00 a. m.) que Limpieza de playa: se necesitan dos vehículos."
   },
   {
    "actividad": "Limpieza de playa",
    "fecha": "2026-10-25",
+   "hora": "05:00",
    "destino": "Punta Roca",
-   "hora_actividad": null,
+   "tipo": "personal",
    "personal_planilla": "Jessica, Sebastián",
    "recogida_planilla": "Montecristo, Villa Carolina",
    "paradas": [
@@ -986,10 +1041,10 @@
      "Sebastián"
     ]
    ],
-   "conductor_planilla": "Por definir",
-   "cruce": "En alimentos figuran además Gabriel (Gobernación), Pamela y Javier Fernández, sin recogida asignada."
+   "cruce": "Misma hora (5:00 a. m.) que Social Plogging: se necesitan dos vehículos. En alimentos figuran además Gabriel, Pamela y Javier Fernández en Punta Roca, sin recogida."
   }
  ],
+ "transporte_version": 2,
  "dias": {
   "2026-10-23": "Viernes 23",
   "2026-10-24": "Sábado 24",

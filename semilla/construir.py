@@ -59,29 +59,41 @@ for (fecha, nom), ks in porpersona.items():
         for k in ks: obs[k].append(f'Tiene merienda AM en dos lugares el mismo día ({lugares}): confirmar dónde se le entrega')
 for k, f in filas.items(): f['observacion'] = ' · '.join(obs[k]) or None
 
+# Transporte v2: planilla TRANSPORTE_PERSONAL.xlsx (22 de octubre). HORA se toma como hora de recogida/salida.
+JUE = '2026-10-22'
+TRANSPORTE_VERSION = 2
 transporte = [
- {'actividad': 'Bosques de Miramar', 'fecha': F['VIERNES'], 'destino': 'Bosque Urbano Miramar', 'hora_actividad': '06:00',
-  'personal_planilla': '2 personas Chavelita', 'recogida_planilla': 'Edificio Mallorquín',
-  'paradas': [('Edificio Mallorquín', 'Chavelita (2 personas)')],
-  'conductor_planilla': 'Julio (según planilla de alimentos)',
-  'cruce': 'En alimentos figuran 3 de Chavelita + Javier Fernández + Julio (conductor). Transporte dice 2 de Chavelita. Javier Fernández no tiene recogida.'},
- {'actividad': 'Yoga', 'fecha': F['SABADO'], 'destino': 'Ecoparque Ciénaga de Mallorquín', 'hora_actividad': None,
-  'personal_planilla': '2 personas Chavelita, Jessica, Marcela', 'recogida_planilla': 'Edificio Mallorquín, Montecristo, San Pacho',
-  'paradas': [('Edificio Mallorquín', 'Chavelita (2 personas)'), ('Montecristo', 'Jessica'), ('San Pacho', 'Marcela')],
-  'conductor_planilla': 'Julio (según planilla de alimentos)',
-  'cruce': 'En alimentos figuran 3 de Chavelita. Transporte dice 2.'},
- {'actividad': 'Social Plogging', 'fecha': F['DOMINGO'], 'destino': 'Plaza de la Paz', 'hora_actividad': None,
-  'personal_planilla': '2 personas Chavelita, Marcela, Juan', 'recogida_planilla': 'Edificio Mallorquín, San Pacho',
-  'paradas': [('Edificio Mallorquín', 'Chavelita (2 personas)'), ('San Pacho', 'Marcela'), ('¿?', 'Juan (sin lugar de recogida)')],
-  'conductor_planilla': 'Por definir',
-  'cruce': 'En alimentos figuran 3 de Chavelita + Juan + Marcela + Emanuel + conductor. Juan no tiene lugar de recogida.'},
- {'actividad': 'Limpieza de playa', 'fecha': F['DOMINGO'], 'destino': 'Punta Roca', 'hora_actividad': None,
+ {'actividad': 'Estructuras para Ecofest', 'fecha': JUE, 'hora': '07:00', 'destino': 'Las Nieves', 'tipo': 'carga',
+  'personal_planilla': '', 'recogida_planilla': '', 'paradas': [],
+  'cruce': 'Traslado de carga: la planilla no dice desde dónde salen las estructuras ni quién las acompaña.'},
+ {'actividad': 'Felipe Restrepo', 'fecha': F['VIERNES'], 'hora': '06:00', 'destino': 'Cámara de Comercio', 'tipo': 'personal',
+  'personal_planilla': 'Felipe Posada', 'recogida_planilla': 'Aeropuerto', 'paradas': [('Aeropuerto', 'Felipe Posada')],
+  'cruce': 'La actividad dice "Felipe Restrepo" y el personal "Felipe Posada": confirmar el nombre y el número de vuelo.'},
+ {'actividad': 'Material para siembra', 'fecha': F['VIERNES'], 'hora': '17:00', 'destino': 'Invernadero Jardín Botánico', 'tipo': 'carga',
+  'personal_planilla': '', 'recogida_planilla': '', 'paradas': [],
+  'cruce': 'Traslado de carga: la planilla no dice desde dónde sale el material.'},
+ {'actividad': 'Bosques de Miramar', 'fecha': F['SABADO'], 'hora': '05:20', 'destino': 'Miramar', 'tipo': 'personal',
+  'personal_planilla': '2 personas Chavelita', 'recogida_planilla': 'Edificio Amore Mallorquín',
+  'paradas': [('Edificio Amore Mallorquín', 'Chavelita (2 personas)')],
+  'cruce': 'Cambió de día: antes era viernes. La planilla de alimentos sigue con Bosque Urbano Miramar el viernes 6:00 a. m. (3 de Chavelita, Javier Fernández y Julio).'},
+ {'actividad': 'Yoga (Miramar)', 'fecha': F['SABADO'], 'hora': '06:30', 'destino': 'Miramar', 'tipo': 'personal',
+  'personal_planilla': '2 personas Chavelita', 'recogida_planilla': 'Edificio Amore Mallorquín, Montecristo, San Pacho',
+  'paradas': [('Edificio Amore Mallorquín', 'Chavelita (2 personas)'), ('Montecristo', '¿quién?'), ('San Pacho', '¿quién?')],
+  'cruce': 'Hay dos filas de Yoga el sábado. Esta va a Miramar a las 6:30 y lista Montecristo y San Pacho sin persona: parece repetida de la otra fila. Confirmar.'},
+ {'actividad': 'Yoga (Mallorquín)', 'fecha': F['SABADO'], 'hora': '06:00', 'destino': 'Ciénaga de Mallorquín', 'tipo': 'personal',
+  'personal_planilla': 'Jessica, Marcela, Juan', 'recogida_planilla': 'Montecristo, San Pacho',
+  'paradas': [('Montecristo', 'Jessica'), ('San Pacho', 'Marcela y Juan')],
+  'cruce': 'Juan no tiene lugar propio: quedó con Marcela en San Pacho. Confirmar.'},
+ {'actividad': 'Social Plogging', 'fecha': F['DOMINGO'], 'hora': '05:00', 'destino': 'Plaza de la Paz', 'tipo': 'personal',
+  'personal_planilla': '2 personas Chavelita, Marcela, Juan', 'recogida_planilla': 'Edificio Amore Mallorquín, San Pacho',
+  'paradas': [('Edificio Amore Mallorquín', 'Chavelita (2 personas)'), ('San Pacho', 'Marcela y Juan')],
+  'cruce': 'Misma hora (5:00 a. m.) que Limpieza de playa: se necesitan dos vehículos.'},
+ {'actividad': 'Limpieza de playa', 'fecha': F['DOMINGO'], 'hora': '05:00', 'destino': 'Punta Roca', 'tipo': 'personal',
   'personal_planilla': 'Jessica, Sebastián', 'recogida_planilla': 'Montecristo, Villa Carolina',
   'paradas': [('Montecristo', 'Jessica'), ('Villa Carolina', 'Sebastián')],
-  'conductor_planilla': 'Por definir',
-  'cruce': 'En alimentos figuran además Gabriel (Gobernación), Pamela y Javier Fernández, sin recogida asignada.'},
+  'cruce': 'Misma hora (5:00 a. m.) que Social Plogging: se necesitan dos vehículos. En alimentos figuran además Gabriel, Pamela y Javier Fernández en Punta Roca, sin recogida.'},
 ]
-json.dump({'entregas': list(filas.values()), 'conteos': conteos, 'transporte': transporte, 'dias': DIA},
+json.dump({'entregas': list(filas.values()), 'conteos': conteos, 'transporte': transporte, 'transporte_version': TRANSPORTE_VERSION, 'dias': DIA},
           open(__file__.replace('construir.py', 'planilla_ecofest.json'), 'w'), ensure_ascii=False, indent=1)
 print(len(filas), 'filas de entrega')
 for c in conteos: print(c['dia'], c['ubicacion'], c['comida'], c['contados'], c['escrito'], '' if c['escrito'] in (None, c['contados']) else '  <-- NO CUADRA')

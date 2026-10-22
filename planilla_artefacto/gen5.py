@@ -18,10 +18,9 @@ for i, f in enumerate(d['entregas']):
         'tarifa': 'completo' if f['almuerzo'] else 'medio-dia', 'orden': i}
 rutas = {}
 for i, r in enumerate(d['transporte']):
-    cond = 'Julio' if r['conductor_planilla'].startswith('Julio') else ''
-    rutas[f'r{i+1}'] = {'fecha': r['fecha'], 'actividad': r['actividad'], 'destino': r['destino'], 'hora_actividad': r['hora_actividad'] or '',
-        'paradas': [{'lugar': l, 'quien': q} for l, q in r['paradas']], 'hora_recogida': '', 'conductor': cond, 'conductor_tel': '',
-        'placa': '', 'vehiculo': '', 'hora_regreso': '', 'lugar_regreso': '', 'equipos': '', 'notas': r['cruce']}
+    rutas[f'r{i+1}'] = {'fecha': r['fecha'], 'actividad': r['actividad'], 'destino': r['destino'], 'hora_actividad': '',
+        'paradas': [{'lugar': l, 'quien': q} for l, q in r['paradas']], 'hora_recogida': r['hora'], 'conductor': '', 'conductor_tel': '',
+        'placa': '', 'vehiculo': '', 'hora_regreso': '', 'lugar_regreso': '', 'equipos': r['actividad'] if r['tipo'] == 'carga' else '', 'notas': r['cruce']}
 tarifas = {'lista': [{'id': 'completo', 'nombre': 'Completo', 'valor': 40000}, {'id': 'medio-dia', 'nombre': 'Medio día', 'valor': 30000}]}
 for col, docs in (('personas', personas), ('rutas', rutas)):
     os.makedirs(os.path.join(sem, col), exist_ok=True)
@@ -61,7 +60,8 @@ pendientes = [
  'Sábado: ¿"Emanuel" y "Emanuel conductor" son la misma persona?',
  '¿Sebastián (Gobernación, Punta Roca) es el mismo Sebastián Ospina?',
  'Totales del Excel que no cuadran con los nombres: viernes merienda PM (27 vs 26), sábado merienda PM (23 vs 24), domingo almuerzo (24 vs 25).',
- 'Transporte: placas, conductores, horas de recogida y de regreso.',
+ 'Transporte: placas, conductores y horas de regreso. Social Plogging y Limpieza de playa salen ambos el domingo a las 5:00 a. m.: hacen falta dos vehículos.',
+ 'Bosques de Miramar pasó al sábado 5:20 a. m., pero la planilla de alimentos sigue con Miramar el viernes: ¿se mueven también esas meriendas?',
 ]
 page = f'''<title>Planilla Ecofest</title>
 <meta name="claude:viewport-fit-sides" content="cover">

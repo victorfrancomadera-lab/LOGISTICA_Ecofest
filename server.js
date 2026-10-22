@@ -528,28 +528,49 @@ api.get('/export/respaldo.db', soloAdmin, (req, res) => {
   res.download(tmp, 'ecofest_respaldo.db', () => fs.unlink(tmp, () => {}));
 });
 
-// Planilla inicial (semilla/planilla_ecofest.json): se carga una sola vez, en la primera arrancada
+// Planilla inicial (semilla/planilla_ecofest.json).
+// Las entregas se cargan una sola vez. El transporte lleva versión: cuando cambia, se reemplazan las rutas de la
+// planilla anterior que nadie ha tocado (sin cambios de estado ni ediciones); las que ya se trabajaron se conservan.
+if (!db.prepare('PRAGMA table_info(traslados)').all().some((c) => c.name === 'semilla')) db.exec('ALTER TABLE traslados ADD COLUMN semilla INTEGER');
+function insertarTransporte(lista, version, userId) {
+  for (const t of lista) {
+    const paradas = t.paradas.map(([lugar, quien], i) => `${i + 1}) ${lugar}: ${quien}`).join(' · ');
+    const id = crearTraslado({
+      fecha: t.fecha, pasajeros: t.personal_planilla ? `${t.actividad}: ${t.personal_planilla}` : `${t.actividad} (carga)`,
+      lugar_recogida: paradas || null, destino: t.destino, hora_recogida: t.hora || null,
+      equipos: t.tipo === 'carga' ? t.actividad : null,
+      notas: [t.cruce, 'Falta: placa, conductor y regreso.'].filter(Boolean).join(' '),
+    }, userId);
+    db.prepare('UPDATE traslados SET semilla = ? WHERE id = ?').run(version, id);
+  }
+}
 function cargarSemilla() {
-  if (getAjustes().semilla_cargada) return;
   const archivo = path.join(__dirname, 'semilla', 'planilla_ecofest.json');
   if (!fs.existsSync(archivo)) return;
   const s = JSON.parse(fs.readFileSync(archivo, 'utf8'));
+  const version = s.transporte_version || 1;
   const admin = db.prepare(`SELECT id FROM usuarios WHERE rol = 'admin' ORDER BY id LIMIT 1`).get();
+  const ajustes = getAjustes();
+  const guardar = db.prepare('INSERT INTO ajustes (clave, valor) VALUES (?,?) ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor');
   db.exec('BEGIN');
   try {
-    for (const e of s.entregas) crearEntrega({ ...e, concepto: 'Alimentación' });
-    for (const t of s.transporte) {
-      const paradas = t.paradas.map(([lugar, quien], i) => `${i + 1}) ${lugar}: ${quien}`).join(' · ');
-      crearTraslado({
-        fecha: t.fecha, pasajeros: `${t.actividad}: ${t.personal_planilla}`, lugar_recogida: paradas,
-        destino: t.destino, hora_recogida: null,
-        notas: [t.hora_actividad ? `Actividad inicia ${t.hora_actividad}.` : null, `Conductor: ${t.conductor_planilla}.`,
-          `Cruce con alimentos: ${t.cruce}`, 'Falta: placa, hora de recogida y regreso.'].filter(Boolean).join(' '),
-      }, admin && admin.id);
+    if (!ajustes.semilla_cargada) {
+      for (const e of s.entregas) crearEntrega({ ...e, concepto: 'Alimentación' });
+      guardar.run('semilla_cargada', ahora());
+      console.log(`Planilla inicial cargada: ${s.entregas.length} entregas`);
     }
-    db.prepare(`INSERT INTO ajustes (clave, valor) VALUES ('semilla_cargada', ?)`).run(ahora());
+    const actual = Number(ajustes.transporte_version || (ajustes.semilla_cargada ? 1 : 0));
+    if (actual < version) {
+      // Rutas de planillas anteriores sin trabajar: creadas por la semilla, en "programado", sin ediciones ni cambios de estado
+      const viejas = db.prepare(`SELECT t.id FROM traslados t WHERE t.estado = 'programado' AND t.actualizado = t.creado
+        AND (t.semilla IS NOT NULL OR t.notas LIKE '%Cruce con alimentos:%')
+        AND (SELECT COUNT(*) FROM bitacora_traslados b WHERE b.traslado_id = t.id) <= 1`).all();
+      for (const v of viejas) db.prepare('DELETE FROM traslados WHERE id = ?').run(v.id);
+      insertarTransporte(s.transporte, version, admin && admin.id);
+      guardar.run('transporte_version', String(version));
+      console.log(`Transporte v${version}: ${viejas.length} rutas anteriores reemplazadas por ${s.transporte.length}`);
+    }
     db.exec('COMMIT');
-    console.log(`Planilla inicial cargada: ${s.entregas.length} entregas, ${s.transporte.length} traslados`);
   } catch (e) { db.exec('ROLLBACK'); console.error('No se pudo cargar la planilla inicial:', e.message); }
 }
 cargarSemilla();

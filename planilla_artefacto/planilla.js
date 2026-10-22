@@ -1,7 +1,7 @@
 // Planilla Ecofest: personas, recibidos de entrega, rutas y tarifas viven en la base compartida del artefacto.
 //   personas/{id}   alimentación por día y lugar      actas/{id}    recibido firmado (mismo id de la persona)
 //   rutas/{id}      transporte                         config/tarifas  {lista: [{id, nombre, valor}]}
-const DIAS = { '2026-10-23': 'viernes 23 de octubre', '2026-10-24': 'sábado 24 de octubre', '2026-10-25': 'domingo 25 de octubre' };
+const DIAS = { '2026-10-22': 'jueves 22 de octubre', '2026-10-23': 'viernes 23 de octubre', '2026-10-24': 'sábado 24 de octubre', '2026-10-25': 'domingo 25 de octubre' };
 const D = { personas: {}, actas: {}, rutas: {}, tarifas: [] };
 let db = null, usuario = null, descargas = null, puedeEscribir = true, puedeAdministrar = false, conectado = false;
 const velo = document.getElementById('velo'), hoja = document.getElementById('hoja');
