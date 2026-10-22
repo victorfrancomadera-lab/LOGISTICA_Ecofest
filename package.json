@@ -1,0 +1,26 @@
+{
+  "name": "logistica-ecofest",
+  "version": "1.0.0",
+  "description": "Ecofest: traslados y entrega de almuerzos con firma digital",
+  "main": "server.js",
+  "scripts": {
+    "start": "node --no-warnings server.js",
+    "dev": "node --watch --no-warnings server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/victorfrancomadera-lab/LOGISTICA_Ecofest.git"
+  },
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/victorfrancomadera-lab/LOGISTICA_Ecofest/issues"
+  },
+  "homepage": "https://github.com/victorfrancomadera-lab/LOGISTICA_Ecofest#readme",
+  "dependencies": {
+    "express": "^4.22.3"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "private": true
+}

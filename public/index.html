@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1F7A4D">
+  <title>Ecofest · Logística</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar" id="topbar" hidden>
+    <a href="#/traslados" class="brand" id="brand"><span class="brand-text">Ecofest</span></a>
+    <span class="who" id="who"></span>
+  </header>
+  <main id="app" class="app"><p class="cargando">Cargando…</p></main>
+  <nav class="tabs" id="tabs" hidden>
+    <a href="#/traslados" data-tab="traslados"><span class="ico">🚐</span>Traslados</a>
+    <a href="#/almuerzos" data-tab="almuerzos"><span class="ico">🍽️</span>Almuerzos</a>
+    <a href="#/mas" data-tab="mas"><span class="ico">⚙️</span>Más</a>
+  </nav>
+  <div id="toast" class="toast" hidden></div>
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+{
+  "name": "Ecofest · Logística",
+  "short_name": "Ecofest",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F5F7F4",
+  "theme_color": "#1F7A4D",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
