@@ -38,7 +38,7 @@ function pintarEstado() {
     dia[e.f] = dia[e.f] || [0, 0]; dia[e.f][1]++; if (actas[id]) dia[e.f][0]++;
   }
   document.querySelectorAll('[data-prog]').forEach((td) => { const p = prog[td.dataset.prog]; td.textContent = p ? `${p[0]}/${p[1]}` : ''; });
-  document.querySelectorAll('[data-dia]').forEach((s) => { const p = dia[s.dataset.dia]; s.innerHTML = p ? `<b>${p[0]}/${p[1]}</b> actas firmadas` : ''; });
+  document.querySelectorAll('[data-dia]').forEach((s) => { const p = dia[s.dataset.dia]; s.innerHTML = p ? `<b>${p[0]}/${p[1]}</b> recibidos firmados` : ''; });
 }
 
 // ---------- hoja (modal) ----------
@@ -67,10 +67,10 @@ function cabecera(e, titulo) {
 
 function nuevaActa(id) {
   const e = ENT[id];
-  if (!db) return abrir(`${cabecera(e, 'Acta de entrega')}<p class="msg">Para guardar actas, abra esta página en claude.ai con su sesión iniciada. ${esc(estadoDb?.textContent || '')}</p>`);
-  if (!puedeEscribir) return abrir(`${cabecera(e, 'Acta de entrega')}<p class="msg">Su acceso a esta página es de solo lectura. Pídale al dueño que le dé permiso de Colaborador o Editor.</p>`);
+  if (!db) return abrir(`${cabecera(e, 'Entrega de alimentación')}<p class="msg">Para guardar recibidos, abra esta página en claude.ai con su sesión iniciada. ${esc(estadoDb?.textContent || '')}</p>`);
+  if (!puedeEscribir) return abrir(`${cabecera(e, 'Entrega de alimentación')}<p class="msg">Su acceso a esta página es de solo lectura. Pídale al dueño que le dé permiso de Colaborador o Editor.</p>`);
   const monto = sugerido(e);
-  abrir(`${cabecera(e, 'Acta de entrega')}
+  abrir(`${cabecera(e, 'Entrega de alimentación')}
     <div class="resumen-acta"><b style="font-size:18px">${esc(e.b)}${e.eg ? ' · grupo' : ''}</b>
       <span class="pie">${esc(e.g)}</span><span>${esc(e.c)}</span></div>
     <form id="f-acta" class="hoja-form" style="display:grid;gap:12px" novalidate>
@@ -86,7 +86,7 @@ function nuevaActa(id) {
         <div class="fila2" style="justify-content:space-between;margin-top:6px"><span class="pie">La firma queda guardada con fecha y hora.</span>
           <button type="button" class="btn sec" id="a-borrar">Borrar firma</button></div></div>
       <p class="msg" id="a-msg" hidden></p>
-      <button class="btn" id="a-guardar" style="min-height:54px;font-size:17px">Guardar acta firmada</button>
+      <button class="btn" id="a-guardar" style="min-height:54px;font-size:17px">Confirmar recibido</button>
     </form>`, () => {
     const f = document.getElementById('f-acta');
     const quien = () => (e.eg ? document.getElementById('a-quien').value.trim() : e.b);
@@ -115,10 +115,10 @@ function nuevaActa(id) {
       };
       try {
         await db.collection('actas').doc(id).set(acta);
-        actas[id] = acta; pintarEstado(); cerrar(); toast(`Acta guardada: ${acta.recibe}`);
+        actas[id] = acta; pintarEstado(); cerrar(); toast(`Recibido guardado: ${acta.recibe}`);
       } catch (err) {
-        btn.disabled = false; btn.textContent = 'Guardar acta firmada';
-        if (err && err.code === 'invalid_argument') { puedeEscribir = false; falta('No tiene permiso para guardar actas en esta página.'); }
+        btn.disabled = false; btn.textContent = 'Confirmar recibido';
+        if (err && err.code === 'invalid_argument') { puedeEscribir = false; falta('No tiene permiso para guardar recibidos en esta página.'); }
         else falta('No se pudo guardar. Revise la conexión e intente de nuevo; la firma sigue en pantalla.');
       }
     };
@@ -127,7 +127,7 @@ function nuevaActa(id) {
 
 function verActa(id) {
   const e = ENT[id], a = actas[id];
-  abrir(`${cabecera(e, 'Acta ' + consecutivo(id))}
+  abrir(`${cabecera(e, 'Recibido ' + consecutivo(id))}
     <div class="resumen-acta">
       <b style="font-size:18px">${esc(a.recibe)}</b>
       ${a.es_grupo ? `<span>Por el grupo ${esc(a.beneficiario)}</span>` : `<span class="pie">${esc(a.grupo || '')}</span>`}
@@ -140,7 +140,7 @@ function verActa(id) {
     <div class="firma-img"><img src="${esc(a.firma)}" alt="Firma de ${esc(a.recibe)}"></div>
     <div class="fila2">
       <button type="button" class="btn" id="v-desc">Descargar soporte (imagen)</button>
-      ${puedeAdministrar ? '<button type="button" class="btn peligro" id="v-anular">Anular acta</button>' : ''}
+      ${puedeAdministrar ? '<button type="button" class="btn peligro" id="v-anular">Anular recibido</button>' : ''}
     </div>
     <div id="v-conf"></div>`, () => {
     if (usuario && a.registrado_por) usuario.profiles([a.registrado_por]).then((ps) => {
@@ -150,11 +150,11 @@ function verActa(id) {
     document.getElementById('v-desc').onclick = () => descargarSoporte(id);
     const an = document.getElementById('v-anular');
     if (an) an.onclick = () => {
-      document.getElementById('v-conf').innerHTML = `<div class="confirmar"><span>¿Anular esta acta? La entrega vuelve a quedar pendiente y la firma se borra.</span>
+      document.getElementById('v-conf').innerHTML = `<div class="confirmar"><span>¿Anular este recibido? La entrega vuelve a quedar pendiente y la firma se borra.</span>
         <div class="fila2"><button type="button" class="btn peligro" id="v-si">Sí, anular</button><button type="button" class="btn sec" id="v-no">No</button></div></div>`;
       document.getElementById('v-no').onclick = () => (document.getElementById('v-conf').innerHTML = '');
       document.getElementById('v-si').onclick = async () => {
-        try { await db.collection('actas').doc(id).delete(); delete actas[id]; pintarEstado(); cerrar(); toast('Acta anulada'); }
+        try { await db.collection('actas').doc(id).delete(); delete actas[id]; pintarEstado(); cerrar(); toast('Recibido anulado'); }
         catch { toast('No se pudo anular. Intente de nuevo.'); }
       };
     };
@@ -212,7 +212,7 @@ async function descargarSoporte(id) {
   x.fillStyle = '#fff'; x.fillRect(0, 0, W, c.height);
   x.fillStyle = '#183A2C'; x.fillRect(0, 0, W, 170); x.fillStyle = '#8DC63F'; x.fillRect(0, 170, W, 8);
   try { const logo = await cargarImg(document.querySelector('header img').src); x.drawImage(logo, 40, 30, 110 * logo.width / logo.height, 110); } catch {}
-  x.fillStyle = '#fff'; x.textAlign = 'right'; x.font = 'bold 34px system-ui, sans-serif'; x.fillText('Acta de entrega', W - 40, 80);
+  x.fillStyle = '#fff'; x.textAlign = 'right'; x.font = 'bold 34px system-ui, sans-serif'; x.fillText('Recibido de entrega', W - 40, 80);
   x.font = 'bold 28px system-ui, sans-serif'; x.fillText(consecutivo(id), W - 40, 125);
   x.textAlign = 'left'; x.fillStyle = '#18221D';
   const filas = [['Recibió', a.recibe], ...(a.es_grupo ? [['Grupo', a.beneficiario]] : a.grupo ? [['Grupo', a.grupo]] : []), ['Cédula', a.documento],
@@ -241,15 +241,15 @@ async function descargarSoporte(id) {
 // ---------- exportar CSV ----------
 document.getElementById('exp-csv').onclick = async () => {
   const lista = Object.values(actas).sort((p, q) => (p.fecha + p.lugar + p.beneficiario).localeCompare(q.fecha + q.lugar + q.beneficiario));
-  if (!lista.length) return toast('Todavía no hay actas firmadas.');
+  if (!lista.length) return toast('Todavía no hay recibidos firmados.');
   if (!descargas) return toast('Esta vista no permite descargar archivos.');
-  const cols = [['entrega', 'Acta'], ['fecha', 'Fecha'], ['lugar', 'Lugar'], ['beneficiario', 'Persona o grupo'], ['grupo', 'Grupo'], ['recibe', 'Recibió'],
+  const cols = [['entrega', 'Recibido'], ['fecha', 'Fecha'], ['lugar', 'Lugar'], ['beneficiario', 'Persona o grupo'], ['grupo', 'Grupo'], ['recibe', 'Recibió'],
     ['documento', 'Cédula'], ['telefono', 'Celular'], ['merienda_am', 'Merienda AM'], ['almuerzo', 'Almuerzo'], ['merienda_pm', 'Merienda PM'],
     ['monto', 'Monto'], ['firmado_en', 'Firmado']];
   const celda = (v) => { const s = String(v ?? ''); return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
   const filas = lista.map((a) => cols.map(([k]) => celda(k === 'entrega' ? consecutivo(a.entrega) : k === 'firmado_en' ? fechaHora(a[k]) : a[k])).join(';'));
   const csv = '﻿' + [cols.map((c) => c[1]).join(';'), ...filas].join('\r\n');
-  try { await descargas.save({ filename: 'actas_ecofest.csv', data: csv }); } catch (err) { if (err && err.code !== 'declined') toast('No se pudo descargar.'); }
+  try { await descargas.save({ filename: 'recibidos_ecofest.csv', data: csv }); } catch (err) { if (err && err.code !== 'declined') toast('No se pudo descargar.'); }
 };
 
 // ---------- valores ----------
@@ -263,14 +263,14 @@ document.getElementById('f-valores').onsubmit = async (ev) => {
 
 // ---------- conexión con la base ----------
 (async () => {
-  if (!window.claude || !window.claude.use) { if (estadoDb) estadoDb.textContent = 'Las actas se guardan solo cuando la página está abierta en claude.ai.'; return; }
+  if (!window.claude || !window.claude.use) { if (estadoDb) estadoDb.textContent = 'Los recibidos se guardan solo cuando la página está abierta en claude.ai.'; return; }
   [db, usuario, descargas] = await Promise.all([claude.use('db'), claude.use('user'), claude.use('downloads')]);
-  if (!db) { if (estadoDb) estadoDb.textContent = 'Inicie sesión en claude.ai para ver y guardar actas.'; return; }
+  if (!db) { if (estadoDb) estadoDb.textContent = 'Inicie sesión en claude.ai para ver y guardar recibidos.'; return; }
   if (usuario) {
     const w = await usuario.can('data.write'); if (w === false) puedeEscribir = false;
     puedeAdministrar = !!(await usuario.canEdit());
   }
-  if (estadoDb) estadoDb.textContent = puedeEscribir ? 'Conectado: las actas se guardan en línea y las ve todo el equipo.' : 'Acceso de solo lectura.';
+  if (estadoDb) estadoDb.textContent = puedeEscribir ? 'Conectado: los recibidos se guardan en línea y las ve todo el equipo.' : 'Acceso de solo lectura.';
   db.collection('actas').limit(1000).onSnapshot((snap) => {
     for (const k of Object.keys(actas)) delete actas[k];
     snap.docs.forEach((d) => { if (d.exists) actas[d.id] = d.data(); });

@@ -37,10 +37,10 @@ for fecha, nombre_dia in dias.items():
             f'<td><b>{e(f["beneficiario"])}</b>{"<span class=tag>grupo</span>" if f["es_grupo"] else ""}<div class=sub>{e(f["grupo"])}</div>'
             f'{"<div class=nota>"+e(f["observacion"])+"</div>" if f["observacion"] else ""}</td>'
             + celda(f['merienda_am']) + celda(f['almuerzo']) + celda(f['merienda_pm'])
-            + f'<td class="acta"><button type="button" class="chk" data-acta="{f["id"]}" aria-label="Acta de entrega de {e(f["beneficiario"])}"><span class="box"></span><span class="hora"></span></button></td></tr>' for f in lista)
+            + f'<td class="acta"><button type="button" class="chk" data-acta="{f["id"]}" aria-label="Marcar recibido de {e(f["beneficiario"])}"><span class="box"></span><span class="hora"></span></button></td></tr>' for f in lista)
         al = ''.join(f'<p class="aviso">La planilla dice <b>{c["escrito"]}</b> en {e(c["comida"].lower())}, pero los nombres listados suman <b>{c["contados"]}</b>.</p>' for c in alerta)
         bloques.append(f'''<div class="ubic"><h3>{e(ub)}</h3>{al}<div class="tw"><table>
-<thead><tr><th>Quién recibe</th><th class="n">AM</th><th class="n">Alm.</th><th class="n">PM</th><th class="acta">Acta</th></tr></thead>
+<thead><tr><th>Quién recibe</th><th class="n">AM</th><th class="n">Alm.</th><th class="n">PM</th><th class="acta">Recibido</th></tr></thead>
 <tbody>{rows}</tbody><tfoot><tr><td>Total</td>{celda(s[0])}{celda(s[1])}{celda(s[2])}<td class="acta progreso" data-prog="{e(fecha+'|'+ub)}"></td></tr></tfoot></table></div></div>''')
     t = tot[fecha]
     secciones.append(f'''<section class="dia panel" id="d{fecha[-2:]}" data-panel="d{fecha[-2:]}"><div class="diahead"><h2>{e(nombre_dia)} de octubre</h2>
@@ -194,10 +194,10 @@ input.campo, .fila2 input, .hoja input {{ font:inherit; padding:10px 12px; borde
 </div>
 <div class="tw"><table class="tdias"><thead><tr><th>Día</th><th class="n">AM</th><th class="n">Alm.</th><th class="n">PM</th></tr></thead><tbody>{"".join(f'<tr><td><b>{e(nd)}</b></td><td class=n>{tot[f][0]}</td><td class=n>{tot[f][1]}</td><td class=n>{tot[f][2]}</td></tr>' for f, nd in dias.items())}</tbody></table></div>
 <div class="valores card"><h2>Valores y soportes</h2>
-<p class="pie" style="margin:0">El valor de cada comida sirve para sugerir el monto en el acta. Siempre se puede corregir antes de firmar.</p>
+<p class="pie" style="margin:0">El valor de cada comida sirve para sugerir el monto de cada entrega. Siempre se puede corregir antes de firmar.</p>
 <form id="f-valores" class="fila2"><label>Merienda (AM o PM)<input id="v-merienda" inputmode="numeric" placeholder="$ por merienda"></label>
 <label>Almuerzo<input id="v-almuerzo" inputmode="numeric" placeholder="$ por almuerzo"></label><button class="btn">Guardar valores</button></form>
-<div class="fila2"><button type="button" class="btn sec" id="exp-csv">Descargar actas firmadas (Excel/CSV)</button></div>
+<div class="fila2"><button type="button" class="btn sec" id="exp-csv">Descargar recibidos firmados (Excel/CSV)</button></div>
 <p class="estado-db pie" style="margin:0"></p></div>
 <div class="pend"><h2>Falta definir antes del viernes</h2><ol>{"".join(f"<li>{e(p)}</li>" for p in pendientes)}</ol></div>
 </section>
