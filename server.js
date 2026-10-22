@@ -111,9 +111,9 @@ const txt = (v) => (v === undefined || v === null ? null : String(v).trim() || n
 function getAjustes() {
   const out = {
     evento: 'Ecofest',
-    color_primario: '#1F7A4D',
-    color_secundario: '#F2A93B',
-    logo: null,
+    color_primario: '#183A2C',
+    color_secundario: '#8DC63F',
+    logo: '/logo.jpg',
     monto_defecto: '20000',
   };
   for (const r of db.prepare('SELECT clave, valor FROM ajustes').all()) out[r.clave] = r.valor;

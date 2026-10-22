@@ -71,10 +71,11 @@ function aplicarMarca(a) {
   const root = document.documentElement.style;
   if (a.color_primario) root.setProperty('--primario', a.color_primario);
   if (a.color_secundario) root.setProperty('--secundario', a.color_secundario);
-  document.querySelector('meta[name=theme-color]').setAttribute('content', a.color_primario || '#1F7A4D');
+  document.querySelector('meta[name=theme-color]').setAttribute('content', a.color_primario || '#183A2C');
   document.title = `${a.evento || 'Ecofest'} · Logística`;
-  document.getElementById('brand').innerHTML = (a.logo ? `<img src="${h(a.logo)}" alt="">` : '') +
-    `<span class="brand-text">${h(a.evento || 'Ecofest')}</span>`;
+  document.getElementById('brand').innerHTML = a.logo
+    ? `<img src="${h(a.logo)}" alt="${h(a.evento || 'Ecofest')}">`
+    : `<span class="brand-text">${h(a.evento || 'Ecofest')}</span>`;
 }
 
 // ---------- enrutador ----------
@@ -122,7 +123,7 @@ function vistaLogin() {
   document.getElementById('tabs').hidden = true;
   const a = estado.ajustes || {};
   pintar(`<div class="login">
-    ${a.logo ? `<img src="${h(a.logo)}" alt="${h(a.evento)}">` : ''}
+    ${a.logo ? `<div class="banda"><img src="${h(a.logo)}" alt="${h(a.evento)}"></div>` : ''}
     <h1>${h(a.evento || 'Ecofest')} · Logística</h1>
     <p class="suave">Traslados y entrega de almuerzos</p>
     <form id="f-login">
@@ -552,7 +553,7 @@ function vistaComprobante(e) {
     <p class="no-print"><a href="#/almuerzos">← Almuerzos</a></p>
     <div class="comprobante">
       <div class="cab">
-        <div>${a.logo ? `<img src="${h(a.logo)}" alt="${h(a.evento)}">` : `<b style="font-size:22px;color:var(--primario)">${h(a.evento)}</b>`}</div>
+        <div>${a.logo ? `<img src="${h(a.logo)}" alt="${h(a.evento)}">` : `<b style="font-size:22px">${h(a.evento)}</b>`}</div>
         <div class="num">Comprobante<br>${num}</div>
       </div>
       ${e.estado === 'anulada' ? `<div class="anulado">ANULADO · ${h(e.anulada_motivo || '')}</div>` : ''}
