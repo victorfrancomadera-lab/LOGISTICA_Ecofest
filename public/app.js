@@ -380,6 +380,7 @@ const MAPA_AL = {
   fecha: 'fecha', nombre: 'beneficiario', beneficiario: 'beneficiario', persona: 'beneficiario', documento: 'documento',
   cedula: 'documento', cc: 'documento', telefono: 'telefono', celular: 'telefono', cargo: 'cargo', rol: 'cargo',
   area: 'cargo', monto: 'monto', valor: 'monto', concepto: 'concepto', grupo: 'grupo', entidad: 'grupo',
+  jornada: 'jornada', tipo: 'jornada', personas: 'personas', cantidad: 'personas',
   lugar: 'ubicacion', ubicacion: 'ubicacion', meriendaam: 'merienda_am', am: 'merienda_am', almuerzo: 'almuerzo',
   almuerzos: 'almuerzo', meriendapm: 'merienda_pm', pm: 'merienda_pm', observacion: 'observacion', observaciones: 'observacion',
 };
@@ -427,14 +428,17 @@ function fechaInicial(fechas, actual) {
   if (fechas.includes(actual) || !fechas.length) return actual;
   return fechas.filter((f) => f >= hoy()).sort()[0] || fechas.sort().at(-1);
 }
+// Alimentación por jornada: día entero o medio día, por persona (un grupo multiplica por sus personas)
+const JORNADAS = { entero: 'Día entero', medio: 'Medio día' };
+const valorJornada = (j) => Number(j === 'medio' ? estado.ajustes.valor_medio_dia : estado.ajustes.valor_dia_entero) || 0;
 function chipsComidas(e) {
-  const c = [];
-  if (e.merienda_am) c.push(`<span class="chip comida">AM ×${e.merienda_am}</span>`);
-  if (e.almuerzo) c.push(`<span class="chip comida">Almuerzo ×${e.almuerzo}</span>`);
-  if (e.merienda_pm) c.push(`<span class="chip comida">PM ×${e.merienda_pm}</span>`);
-  return c.join(' ');
+  return `<span class="chip comida">${JORNADAS[e.jornada] || 'Día entero'}${e.personas > 1 ? ` × ${e.personas}` : ''}</span>`;
 }
-const valoresDefinidos = () => Number(estado.ajustes.valor_merienda) > 0 || Number(estado.ajustes.valor_almuerzo) > 0;
+function opcionesJornada(nombre, actual) {
+  return `<div class="cats">${Object.entries(JORNADAS).map(([k, t]) => `<label class="cat"><input type="radio" name="${nombre}" value="${k}" ${k === (actual || 'entero') ? 'checked' : ''}>
+    <span>${t} · ${pesos(valorJornada(k))}</span></label>`).join('')}</div>`;
+}
+const valoresDefinidos = () => valorJornada('entero') > 0 || valorJornada('medio') > 0;
 
 async function vistaAlmuerzos(silencioso) {
   if (!estado.fechaAlAuto) {
@@ -464,11 +468,11 @@ async function vistaAlmuerzos(silencioso) {
       <a class="btn primario chico" href="#/almuerzos/nueva">+ Persona</a></div>
     </div>
     ${barraFechas(estado.fechaAl, fechas, 'fecha-al')}
-    ${!valoresDefinidos() ? `<div class="aviso">Aún no hay valor por merienda ni por almuerzo, así que los montos salen en $0.
+    ${!valoresDefinidos() ? `<div class="aviso">Aún no hay valor para día entero ni medio día, así que los montos salen en $0.
       ${esAdmin() ? '<a href="#/ajustes">Definir valores</a>' : 'Pídale al administrador que los defina.'}</div>` : ''}
     <div class="resumen">
       <div><b>${ent.length}/${vivas.length}</b><span>Firmados</span></div>
-      <div><b>${suma(vivas, 'merienda_am')}·${suma(vivas, 'almuerzo')}·${suma(vivas, 'merienda_pm')}</b><span>AM · Almuerzo · PM</span></div>
+      <div><b>${vivas.filter((e) => e.jornada !== 'medio').reduce((s, e) => s + (e.personas || 1), 0)} · ${vivas.filter((e) => e.jornada === 'medio').reduce((s, e) => s + (e.personas || 1), 0)}</b><span>Día entero · Medio día (personas)</span></div>
       <div><b>${pesos(suma(ent, 'monto'))}</b><span>Entregado de ${pesos(suma(vivas, 'monto'))}</span></div>
     </div>
     <div class="fila" style="margin-bottom:8px">
@@ -503,7 +507,7 @@ async function vistaAlmuerzos(silencioso) {
 
 async function vistaFormEntrega(id) {
   const e = id ? await api('/entregas/' + id)
-    : { fecha: estado.fechaAl, ubicacion: estado.lugarAl, almuerzo: 1, merienda_am: 0, merienda_pm: 0, concepto: 'Alimentación' };
+    : { fecha: estado.fechaAl, ubicacion: estado.lugarAl, jornada: 'entero', personas: 1, concepto: 'Alimentación' };
   const v = (k) => h(e[k] ?? '');
   pintar(`
     <p><a href="${id ? '#/almuerzos/' + id : '#/almuerzos'}">← Volver</a></p>
@@ -515,14 +519,13 @@ async function vistaFormEntrega(id) {
         <div><label>Grupo / entidad</label><input name="grupo" value="${v('grupo')}" placeholder="Ej. Gobernación, CUC, Equipo Ecofest"></div>
         <div><label>Lugar</label><input name="ubicacion" value="${v('ubicacion')}" placeholder="Ej. Plaza de la Paz" list="lugares"></div>
       </div>
-      <h2>Comidas de ese día</h2>
-      <div class="tres">
-        <div><label>Merienda AM</label><input name="merienda_am" type="number" min="0" inputmode="numeric" value="${v('merienda_am') || 0}"></div>
-        <div><label>Almuerzo</label><input name="almuerzo" type="number" min="0" inputmode="numeric" value="${v('almuerzo') || 0}"></div>
-        <div><label>Merienda PM</label><input name="merienda_pm" type="number" min="0" inputmode="numeric" value="${v('merienda_pm') || 0}"></div>
+      <label>Jornada</label>
+      ${opcionesJornada('jornada', e.jornada)}
+      <div class="dos">
+        <div><label>Personas (si es grupo)</label><input name="personas" type="number" min="1" inputmode="numeric" value="${v('personas') || 1}"></div>
+        <div><label>Monto</label><input name="monto" inputmode="numeric" value="${id ? v('monto') : ''}" placeholder="Vacío = jornada × personas"></div>
       </div>
       <div class="dos">
-        <div><label>Monto</label><input name="monto" inputmode="numeric" value="${id ? v('monto') : ''}" placeholder="Vacío = se calcula con los valores"></div>
         <div><label>Fecha *</label><input type="date" name="fecha" value="${v('fecha')}" required></div>
       </div>
       <div class="dos">
@@ -551,10 +554,11 @@ async function vistaEntrega(id) {
   return vistaComprobante(e);
 }
 
-const paraQue = (e) => e.comidas || (e.concepto || 'alimentación').toLowerCase();
+const paraQue = (e) => 'alimentación de ' + (e.comidas || 'día entero');
 function textoDeclaracion(e, quien, doc, monto, evento) {
-  const grupo = e.es_grupo ? ` como responsable del grupo ${e.beneficiario}${e.grupo && e.grupo !== e.beneficiario ? ` (${e.grupo})` : ''},` : '';
-  return `Yo, ${quien || '______'}, identificado(a) con documento ${doc || '______'},${grupo} declaro que recibí ${pesos(monto)} en efectivo para ${paraQue(e)} del evento ${evento}${e.ubicacion ? `, en ${e.ubicacion}` : ''}.`;
+  const grupo = e.es_grupo ? ` como responsable del grupo ${e.beneficiario}${e.personas > 1 ? ` (${e.personas} personas)` : ''},` : '';
+  const jornada = (JORNADAS[e.jornada] || 'Día entero').toLowerCase();
+  return `Yo, ${quien || '______'}, identificado(a) con documento ${doc || '______'},${grupo} declaro que recibí ${pesos(monto)} en efectivo para alimentación de ${jornada} del evento ${evento}${e.ubicacion ? `, en ${e.ubicacion}` : ''}.`;
 }
 
 function vistaFirmar(e) {
@@ -573,9 +577,11 @@ function vistaFirmar(e) {
     </div>
     <form id="f-firma">
       ${e.es_grupo ? `<label>Nombre de quien recibe por el grupo *</label><input name="recibido_por" required autocomplete="off">` : ''}
+      <label>Jornada</label>
+      ${opcionesJornada('jornada', e.jornada)}
       <div class="dos">
         <div><label>Cédula *</label><input name="documento" inputmode="numeric" value="${h(e.documento || '')}" required></div>
-        <div><label>Monto entregado *</label><input name="monto" inputmode="numeric" value="${e.monto ? h(e.monto) : ''}" required></div>
+        <div><label>Monto entregado${e.personas > 1 ? ` (${e.personas} personas)` : ''} *</label><input name="monto" inputmode="numeric" value="${e.monto ? h(e.monto) : ''}" required></div>
       </div>
       <label class="check" style="margin-top:14px"><input type="checkbox" id="acepto" required>
         <span id="texto-decl"></span></label>
@@ -585,11 +591,14 @@ function vistaFirmar(e) {
       <p><button class="btn primario bloque grande" id="confirmar">Confirmar entrega</button></p>
     </form>`);
   const form = document.getElementById('f-firma');
+  const jornadaSel = () => (form.querySelector('input[name=jornada]:checked') || {}).value || 'entero';
   const decl = () => {
     const m = Number(String(form.monto.value).replace(/[^\d]/g, '')) || 0;
     const quien = e.es_grupo ? form.recibido_por.value : e.beneficiario;
-    document.getElementById('texto-decl').textContent = textoDeclaracion(e, quien, form.documento.value, m, evento);
+    document.getElementById('texto-decl').textContent = textoDeclaracion({ ...e, jornada: jornadaSel() }, quien, form.documento.value, m, evento);
   };
+  // al cambiar la jornada, el monto se recalcula: valor × personas
+  form.querySelectorAll('input[name=jornada]').forEach((r) => (r.onchange = () => { form.monto.value = valorJornada(r.value) * (e.personas || 1) || ''; decl(); }));
   form.oninput = decl; decl();
 
   const firma = lienzoFirma(document.getElementById('lienzo'));
@@ -607,7 +616,7 @@ function vistaFirmar(e) {
     const btn = document.getElementById('confirmar'); btn.disabled = true;
     try {
       await api(`/entregas/${e.id}/firmar`, { method: 'POST', body: {
-        firma: firma.png(), documento: form.documento.value, monto: form.monto.value,
+        firma: firma.png(), documento: form.documento.value, monto: form.monto.value, jornada: jornadaSel(),
         recibido_por: e.es_grupo ? form.recibido_por.value : undefined, ...geo } });
       toast('Entrega registrada ✔');
       document.getElementById('tabs').hidden = false;
@@ -661,7 +670,7 @@ function vistaComprobante(e) {
         <tr><td>Documento</td><td>${h(e.documento || '—')}</td></tr>
         ${!e.es_grupo && (e.grupo || e.cargo) ? `<tr><td>Grupo / cargo</td><td>${h(e.grupo || e.cargo)}</td></tr>` : ''}
         ${e.ubicacion ? `<tr><td>Lugar</td><td>${h(e.ubicacion)}</td></tr>` : ''}
-        ${e.comidas ? `<tr><td>Comidas</td><td>${h(e.comidas)}</td></tr>` : ''}
+        <tr><td>Jornada</td><td>${h(JORNADAS[e.jornada] || 'Día entero')}${e.personas > 1 ? ` · ${e.personas} personas` : ''}</td></tr>
         ${e.telefono ? `<tr><td>Teléfono</td><td>${h(e.telefono)}</td></tr>` : ''}
         <tr><td>Valor</td><td class="monto">${pesos(e.monto)}</td></tr>
         <tr><td>Fecha del evento</td><td>${h(fechaLarga(e.fecha))}</td></tr>
@@ -690,8 +699,8 @@ function vistaComprobante(e) {
 function vistaImportarEntregas() {
   vistaImportar({
     titulo: 'Importar lista de alimentación', volver: '#/almuerzos', mapa: MAPA_AL, ruta: '/entregas/importar',
-    columnas: 'Nombre, Documento, Teléfono, Grupo, Lugar, Merienda AM, Almuerzo, Merienda PM, Monto, Fecha, Observación (sin Fecha se usa la seleccionada; sin Monto se calcula con los valores de Ajustes)',
-    ejemplo: 'Nombre\tGrupo\tLugar\tMerienda AM\tAlmuerzo\tMerienda PM\nAna Pérez\tEquipo Ecofest\tPlaza de la Paz\t1\t1\t1',
+    columnas: 'Nombre, Documento, Teléfono, Grupo, Lugar, Jornada (día entero / medio día), Personas, Monto, Fecha, Observación (sin Fecha se usa la seleccionada; sin Monto se calcula: jornada × personas)',
+    ejemplo: 'Nombre\tGrupo\tLugar\tJornada\tPersonas\nAna Pérez\tEquipo Ecofest\tPlaza de la Paz\tDía entero\t1',
     completar: (f) => ({ fecha: estado.fechaAl, ...Object.fromEntries(Object.entries(f).filter(([, v]) => v)) }),
   });
 }
@@ -1013,13 +1022,12 @@ async function vistaAjustes() {
         <div><label>Color de acento</label><input type="color" name="color_secundario" value="${h(a.color_secundario)}"></div>
       </div>
       <div class="dos">
-        <div><label>Valor de cada merienda (AM o PM)</label><input name="valor_merienda" inputmode="numeric" value="${h(a.valor_merienda)}"></div>
-        <div><label>Valor de cada almuerzo</label><input name="valor_almuerzo" inputmode="numeric" value="${h(a.valor_almuerzo)}"></div>
+        <div><label>Valor día entero (por persona)</label><input name="valor_dia_entero" inputmode="numeric" value="${h(a.valor_dia_entero)}"></div>
+        <div><label>Valor medio día (por persona)</label><input name="valor_medio_dia" inputmode="numeric" value="${h(a.valor_medio_dia)}"></div>
       </div>
       <label>Base de caja (efectivo total asignado al evento)</label><input name="base_caja" inputmode="numeric" value="${h(a.base_caja || '')}" placeholder="$">
       <p class="suave pequeno">Con la base, la pestaña Caja muestra el saldo: base − salidas de caja menor − recibidos de alimentación.</p>
-      <p class="suave pequeno">Al guardar, se recalcula el monto de todas las entregas pendientes según sus comidas. Las ya firmadas no cambian.</p>
-      <label>Monto por defecto (personas agregadas sin comidas)</label><input name="monto_defecto" inputmode="numeric" value="${h(a.monto_defecto)}">
+      <p class="suave pequeno">Al guardar, se recalcula el monto de todas las entregas pendientes: valor de la jornada × personas. Las ya firmadas no cambian.</p>
       <p><button class="btn primario bloque grande">Guardar</button></p>
       ${a.logo ? '<p><button type="button" class="btn bloque" id="quitar-logo">Quitar logo</button></p>' : ''}
     </form>`);

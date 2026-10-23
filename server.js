@@ -103,7 +103,8 @@ CREATE INDEX IF NOT EXISTS ix_entregas_fecha ON entregas(fecha);
 const columnasEntregas = db.prepare('PRAGMA table_info(entregas)').all().map((c) => c.name);
 for (const [col, tipo] of [['ubicacion', 'TEXT'], ['grupo', 'TEXT'], ['es_grupo', 'INTEGER NOT NULL DEFAULT 0'],
   ['merienda_am', 'INTEGER NOT NULL DEFAULT 0'], ['almuerzo', 'INTEGER NOT NULL DEFAULT 0'], ['merienda_pm', 'INTEGER NOT NULL DEFAULT 0'],
-  ['observacion', 'TEXT'], ['monto_manual', 'INTEGER NOT NULL DEFAULT 0'], ['recibido_por', 'TEXT']]) {
+  ['observacion', 'TEXT'], ['monto_manual', 'INTEGER NOT NULL DEFAULT 0'], ['recibido_por', 'TEXT'],
+  ['jornada', 'TEXT'], ['personas', 'INTEGER']]) {
   if (!columnasEntregas.includes(col)) db.exec(`ALTER TABLE entregas ADD COLUMN ${col} ${tipo}`);
 }
 
@@ -155,6 +156,8 @@ function getAjustes() {
     monto_defecto: '20000',
     base_caja: '0',
     valor_merienda: '0',
+    valor_dia_entero: '40000',
+    valor_medio_dia: '30000',
     valor_almuerzo: '0',
   };
   for (const r of db.prepare('SELECT clave, valor FROM ajustes').all()) out[r.clave] = r.valor;
@@ -221,7 +224,7 @@ api.post('/logout', (req, res) => {
 api.get('/ajustes-publicos', (req, res) => {
   const a = getAjustes();
   res.json({ evento: a.evento, color_primario: a.color_primario, color_secundario: a.color_secundario, logo: a.logo, monto_defecto: a.monto_defecto,
-    valor_merienda: a.valor_merienda, valor_almuerzo: a.valor_almuerzo });
+    valor_merienda: a.valor_merienda, valor_almuerzo: a.valor_almuerzo, valor_dia_entero: a.valor_dia_entero, valor_medio_dia: a.valor_medio_dia });
 });
 
 api.use(auth);
@@ -230,7 +233,7 @@ api.get('/yo', (req, res) => res.json({ ...req.user, version: VERSION, persisten
 // --- ajustes ---
 api.get('/ajustes', (req, res) => res.json(getAjustes()));
 api.put('/ajustes', soloAdmin, (req, res) => {
-  const permitidas = ['evento', 'color_primario', 'color_secundario', 'logo', 'monto_defecto', 'valor_merienda', 'valor_almuerzo', 'base_caja'];
+  const permitidas = ['evento', 'color_primario', 'color_secundario', 'logo', 'monto_defecto', 'valor_merienda', 'valor_almuerzo', 'valor_dia_entero', 'valor_medio_dia', 'base_caja'];
   const up = db.prepare('INSERT INTO ajustes (clave, valor) VALUES (?,?) ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor');
   for (const k of permitidas) if (k in req.body) up.run(k, req.body[k] === null ? null : String(req.body[k]));
   recalcularPendientes();
@@ -405,8 +408,9 @@ api.get('/entregas/resumen', (req, res) => {
   const { fecha } = req.query;
   const where = fecha ? 'WHERE fecha = ?' : '';
   const params = fecha ? [fecha] : [];
-  res.json(db.prepare(`SELECT estado, COUNT(*) n, COALESCE(SUM(monto),0) total, SUM(merienda_am) merienda_am, SUM(almuerzo) almuerzo,
-    SUM(merienda_pm) merienda_pm FROM entregas ${where} GROUP BY estado`).all(...params));
+  res.json(db.prepare(`SELECT estado, COUNT(*) n, COALESCE(SUM(monto),0) total,
+    SUM(CASE WHEN jornada = 'medio' THEN 0 ELSE personas END) dia_entero, SUM(CASE WHEN jornada = 'medio' THEN personas ELSE 0 END) medio_dia
+    FROM entregas ${where} GROUP BY estado`).all(...params));
 });
 api.get('/entregas/:id', (req, res) => {
   const e = db.prepare(`${SQL_ENTREGAS} WHERE e.id = ?`).get(req.params.id);
@@ -414,34 +418,57 @@ api.get('/entregas/:id', (req, res) => {
   res.json({ ...e, comidas: conceptoComidas(e) });
 });
 const entero = (v) => Math.max(0, Math.round(Number(String(v ?? '').replace(/[^\d]/g, '')) || 0));
-// Texto de las comidas: "1 merienda AM, 1 almuerzo y 1 merienda PM"
+// Alimentación por jornada: cada entrega es de día entero o de medio día, por persona (un grupo multiplica por sus personas)
+const JORNADAS = { entero: 'Día entero', medio: 'Medio día' };
+function jornadaDe(b) {
+  if (JORNADAS[b.jornada]) return b.jornada;
+  const t = String(b.jornada || '').toLowerCase();
+  if (t.includes('medio')) return 'medio';
+  if (t.includes('entero') || t.includes('complet')) return 'entero';
+  // planillas con comidas sueltas: con almuerzo es día entero; solo meriendas, medio día
+  if (entero(b.almuerzo) > 0) return 'entero';
+  return entero(b.merienda_am) + entero(b.merienda_pm) > 0 ? 'medio' : 'entero';
+}
+function personasDe(b, esGrupo) {
+  const n = entero(b.personas);
+  if (n) return n;
+  return esGrupo ? Math.max(entero(b.merienda_am), entero(b.almuerzo), entero(b.merienda_pm), 1) : 1;
+}
 function conceptoComidas(e) {
-  const partes = [];
-  const p = (n, s, pl) => n && partes.push(`${n} ${n === 1 ? s : pl}`);
-  p(e.merienda_am, 'merienda AM', 'meriendas AM'); p(e.almuerzo, 'almuerzo', 'almuerzos'); p(e.merienda_pm, 'merienda PM', 'meriendas PM');
-  return partes.length > 1 ? partes.slice(0, -1).join(', ') + ' y ' + partes.at(-1) : partes[0] || null;
+  const j = (JORNADAS[e.jornada] || 'Día entero').toLowerCase();
+  return e.personas > 1 ? `${j} (${e.personas} personas)` : j;
 }
 function montoComidas(e, a = getAjustes()) {
-  return entero(e.merienda_am + e.merienda_pm) * entero(a.valor_merienda) + entero(e.almuerzo) * entero(a.valor_almuerzo);
+  const valor = e.jornada === 'medio' ? entero(a.valor_medio_dia) : entero(a.valor_dia_entero);
+  return valor * (e.personas || 1);
 }
 function recalcularPendientes() {
   const a = getAjustes();
   const up = db.prepare('UPDATE entregas SET monto = ? WHERE id = ?');
-  for (const e of db.prepare(`SELECT * FROM entregas WHERE estado = 'pendiente' AND monto_manual = 0
-    AND (merienda_am + almuerzo + merienda_pm) > 0`).all()) up.run(montoComidas(e, a), e.id);
+  for (const e of db.prepare(`SELECT * FROM entregas WHERE estado = 'pendiente' AND monto_manual = 0 AND jornada IS NOT NULL`).all()) {
+    up.run(montoComidas(e, a), e.id);
+  }
+}
+// Entregas creadas antes de las jornadas: se les asigna la jornada por sus comidas y se recalcula el monto de las pendientes
+if (db.prepare('SELECT COUNT(*) n FROM entregas WHERE jornada IS NULL').get().n) {
+  db.exec(`UPDATE entregas SET jornada = CASE WHEN almuerzo > 0 THEN 'entero' WHEN merienda_am + merienda_pm > 0 THEN 'medio' ELSE 'entero' END,
+    personas = CASE WHEN es_grupo = 1 THEN MAX(merienda_am, almuerzo, merienda_pm, 1) ELSE 1 END WHERE jornada IS NULL`);
+  recalcularPendientes();
 }
 function crearEntrega(b) {
+  const esGrupo = !!(b.es_grupo && b.es_grupo !== '0');
   const e = {
     merienda_am: entero(b.merienda_am), almuerzo: entero(b.almuerzo), merienda_pm: entero(b.merienda_pm),
+    jornada: jornadaDe(b), personas: personasDe(b, esGrupo),
   };
-  const tieneComidas = e.merienda_am + e.almuerzo + e.merienda_pm > 0;
-  const manual = b.monto !== undefined && b.monto !== '' && !(tieneComidas && entero(b.monto) === 0);
-  const monto = manual ? entero(b.monto) : tieneComidas ? montoComidas(e) : entero(getAjustes().monto_defecto);
+  const calculado = montoComidas(e);
+  const escrito = b.monto === undefined || b.monto === '' ? 0 : entero(b.monto);
+  const manual = escrito > 0 && escrito !== calculado;
   const r = db.prepare(`INSERT INTO entregas (fecha, beneficiario, documento, telefono, cargo, monto, concepto, ubicacion, grupo,
-    es_grupo, merienda_am, almuerzo, merienda_pm, observacion, monto_manual) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-    .run(txt(b.fecha), txt(b.beneficiario), txt(b.documento), txt(b.telefono), txt(b.cargo), monto,
-      txt(b.concepto) || (tieneComidas ? 'Alimentación' : 'Almuerzo'), txt(b.ubicacion), txt(b.grupo), b.es_grupo ? 1 : 0,
-      e.merienda_am, e.almuerzo, e.merienda_pm, txt(b.observacion), manual ? 1 : 0);
+    es_grupo, merienda_am, almuerzo, merienda_pm, observacion, monto_manual, jornada, personas) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(txt(b.fecha), txt(b.beneficiario), txt(b.documento), txt(b.telefono), txt(b.cargo), manual ? escrito : calculado,
+      txt(b.concepto) || 'Alimentación', txt(b.ubicacion), txt(b.grupo), esGrupo ? 1 : 0,
+      e.merienda_am, e.almuerzo, e.merienda_pm, txt(b.observacion), manual ? 1 : 0, e.jornada, e.personas);
   return Number(r.lastInsertRowid);
 }
 // Crear una entrega (pendiente). Cualquier usuario puede registrar a alguien que no estaba en la lista.
@@ -467,22 +494,20 @@ api.put('/entregas/:id', (req, res) => {
   if (!e) return res.status(404).json({ error: 'No existe' });
   if (e.estado !== 'pendiente' && req.user.rol !== 'admin') return res.status(403).json({ error: 'Una entrega firmada no se puede editar' });
   const b = req.body;
+  const esGrupo = 'es_grupo' in b ? (b.es_grupo && b.es_grupo !== '0' ? 1 : 0) : e.es_grupo;
   const c = {
-    merienda_am: 'merienda_am' in b ? entero(b.merienda_am) : e.merienda_am,
-    almuerzo: 'almuerzo' in b ? entero(b.almuerzo) : e.almuerzo,
-    merienda_pm: 'merienda_pm' in b ? entero(b.merienda_pm) : e.merienda_pm,
+    jornada: JORNADAS[b.jornada] ? b.jornada : e.jornada || 'entero',
+    personas: esGrupo ? (entero(b.personas) || e.personas || 1) : 1,
   };
-  const tieneComidas = c.merienda_am + c.almuerzo + c.merienda_pm > 0;
   // Si el monto escrito es el mismo que daría el cálculo (o viene vacío), se sigue calculando solo
   const calculado = montoComidas(c);
-  const escrito = b.monto === undefined || b.monto === '' ? null : entero(b.monto);
-  const manual = escrito !== null && !(tieneComidas && (escrito === calculado || escrito === 0));
-  const monto = manual ? escrito : tieneComidas ? calculado : (escrito ?? e.monto);
+  const escrito = b.monto === undefined || b.monto === '' ? 0 : entero(b.monto);
+  const manual = escrito > 0 && escrito !== calculado;
   db.prepare(`UPDATE entregas SET fecha = ?, beneficiario = ?, documento = ?, telefono = ?, cargo = ?, monto = ?, concepto = ?,
-    ubicacion = ?, grupo = ?, es_grupo = ?, merienda_am = ?, almuerzo = ?, merienda_pm = ?, observacion = ?, monto_manual = ? WHERE id = ?`)
+    ubicacion = ?, grupo = ?, es_grupo = ?, jornada = ?, personas = ?, observacion = ?, monto_manual = ? WHERE id = ?`)
     .run(txt(b.fecha) || e.fecha, txt(b.beneficiario) || e.beneficiario, txt(b.documento), txt(b.telefono), txt(b.cargo),
-      monto, txt(b.concepto) || e.concepto, 'ubicacion' in b ? txt(b.ubicacion) : e.ubicacion, 'grupo' in b ? txt(b.grupo) : e.grupo,
-      'es_grupo' in b ? (b.es_grupo && b.es_grupo !== '0' ? 1 : 0) : e.es_grupo, c.merienda_am, c.almuerzo, c.merienda_pm,
+      manual ? escrito : calculado, txt(b.concepto) || e.concepto, 'ubicacion' in b ? txt(b.ubicacion) : e.ubicacion,
+      'grupo' in b ? txt(b.grupo) : e.grupo, esGrupo, c.jornada, c.personas,
       'observacion' in b ? txt(b.observacion) : e.observacion, manual ? 1 : 0, e.id);
   res.json({ ok: true });
 });
@@ -497,9 +522,10 @@ api.post('/entregas/:id/firmar', (req, res) => {
   if (!txt(documento) && !txt(e.documento)) return res.status(400).json({ error: 'Falta el número de documento' });
   const montoFinal = monto !== undefined && monto !== '' ? Math.round(Number(String(monto).replace(/[^\d]/g, '')) || 0) : e.monto;
   if (!montoFinal) return res.status(400).json({ error: 'El monto debe ser mayor a cero' });
+  const jornada = JORNADAS[req.body.jornada] ? req.body.jornada : e.jornada || 'entero';
   db.prepare(`UPDATE entregas SET estado = 'entregado', firma = ?, firmado_en = ?, entregado_por = ?, documento = ?, monto = ?,
-    lat = ?, lng = ?, dispositivo = ?, recibido_por = ? WHERE id = ?`).run(firma, ahora(), req.user.id, txt(documento) || e.documento, montoFinal,
-    lat ?? null, lng ?? null, String(req.headers['user-agent'] || '').slice(0, 250), recibidoPor, e.id);
+    lat = ?, lng = ?, dispositivo = ?, recibido_por = ?, jornada = ? WHERE id = ?`).run(firma, ahora(), req.user.id, txt(documento) || e.documento, montoFinal,
+    lat ?? null, lng ?? null, String(req.headers['user-agent'] || '').slice(0, 250), recibidoPor, jornada, e.id);
   res.json({ ok: true });
 });
 api.post('/entregas/:id/anular', soloAdmin, (req, res) => {
@@ -598,9 +624,9 @@ api.get('/export/traslados.csv', (req, res) => {
 });
 api.get('/export/entregas.csv', (req, res) => {
   const filas = db.prepare(`${SQL_ENTREGAS} ORDER BY e.fecha, e.id`).all()
-    .map((e) => ({ ...e, consecutivo: consecutivo(e.id) }));
+    .map((e) => ({ ...e, consecutivo: consecutivo(e.id), jornada_txt: JORNADAS[e.jornada] || '' }));
   csv(res, 'entregas_almuerzos_ecofest.csv', [['consecutivo', 'Comprobante'], ['fecha', 'Fecha'], ['ubicacion', 'Lugar'], ['beneficiario', 'Nombre'], ['grupo', 'Grupo'],
-    ['merienda_am', 'Merienda AM'], ['almuerzo', 'Almuerzo'], ['merienda_pm', 'Merienda PM'], ['recibido_por', 'Recibió (grupo)'],
+    ['jornada_txt', 'Jornada'], ['personas', 'Personas'], ['recibido_por', 'Recibió (grupo)'],
     ['documento', 'Documento'], ['telefono', 'Teléfono'], ['cargo', 'Cargo/Rol'], ['concepto', 'Concepto'], ['monto', 'Monto'],
     ['estado', 'Estado'], ['firmado_en', 'Firmado (UTC)'], ['entregado_por_nombre', 'Entregado por'], ['lat', 'Latitud'],
     ['lng', 'Longitud'], ['observacion', 'Observación'], ['anulada_motivo', 'Motivo anulación']], filas);
