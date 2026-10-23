@@ -531,7 +531,9 @@ api.get('/export/respaldo.db', soloAdmin, (req, res) => {
 // Planilla inicial (semilla/planilla_ecofest.json).
 // Las entregas se cargan una sola vez. El transporte lleva versión: cuando cambia, se reemplazan las rutas de la
 // planilla anterior que nadie ha tocado (sin cambios de estado ni ediciones); las que ya se trabajaron se conservan.
-if (!db.prepare('PRAGMA table_info(traslados)').all().some((c) => c.name === 'semilla')) db.exec('ALTER TABLE traslados ADD COLUMN semilla INTEGER');
+for (const tabla of ['traslados', 'entregas']) {
+  if (!db.prepare(`PRAGMA table_info(${tabla})`).all().some((c) => c.name === 'semilla')) db.exec(`ALTER TABLE ${tabla} ADD COLUMN semilla INTEGER`);
+}
 function insertarTransporte(lista, version, userId) {
   for (const t of lista) {
     const paradas = t.paradas.map(([lugar, quien], i) => `${i + 1}) ${lugar}: ${quien}`).join(' · ');
@@ -554,10 +556,23 @@ function cargarSemilla() {
   const guardar = db.prepare('INSERT INTO ajustes (clave, valor) VALUES (?,?) ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor');
   db.exec('BEGIN');
   try {
-    if (!ajustes.semilla_cargada) {
-      for (const e of s.entregas) crearEntrega({ ...e, concepto: 'Alimentación' });
-      guardar.run('semilla_cargada', ahora());
-      console.log(`Planilla inicial cargada: ${s.entregas.length} entregas`);
+    // Alimentación: cuando cambia la versión de la planilla se reemplazan las entregas PENDIENTES que vinieron de la
+    // planilla anterior. Las firmadas o anuladas nunca se tocan, y no se crea otra entrega para quien ya firmó.
+    const versionE = s.entregas_version || 1;
+    const actualE = Number(ajustes.entregas_version || (ajustes.semilla_cargada ? 1 : 0));
+    if (actualE < versionE) {
+      const borradas = ajustes.semilla_cargada ? db.prepare(`DELETE FROM entregas WHERE estado = 'pendiente'
+        AND (semilla IS NOT NULL OR (semilla IS NULL AND creado <= datetime(?, '+10 seconds')))`).run(ajustes.semilla_cargada).changes : 0;
+      const firmada = db.prepare(`SELECT 1 FROM entregas WHERE estado != 'pendiente' AND fecha = ? AND ubicacion = ? AND beneficiario = ?`);
+      let nuevas = 0, omitidas = 0;
+      for (const e of s.entregas) {
+        if (firmada.get(e.fecha, e.ubicacion, e.beneficiario)) { omitidas++; continue; }
+        const id = crearEntrega({ ...e, concepto: 'Alimentación' });
+        db.prepare('UPDATE entregas SET semilla = ? WHERE id = ?').run(versionE, id); nuevas++;
+      }
+      if (!ajustes.semilla_cargada) guardar.run('semilla_cargada', ahora());
+      guardar.run('entregas_version', String(versionE));
+      console.log(`Alimentación v${versionE}: ${borradas} pendientes anteriores reemplazadas por ${nuevas} (${omitidas} ya firmadas se conservan)`);
     }
     const actual = Number(ajustes.transporte_version || (ajustes.semilla_cargada ? 1 : 0));
     if (actual < version) {

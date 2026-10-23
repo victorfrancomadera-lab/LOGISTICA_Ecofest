@@ -7,24 +7,26 @@ P = lambda n, g='Equipo Ecofest': ('p', n, g)
 G = lambda g, c: ('g', g, c)
 COND = ('p', 'Conductor (por definir)', 'Conductores')
 
-# (fecha, ubicación, comida, lista, total_escrito_en_planilla)
+# (fecha, ubicación, comida, lista, total_escrito_en_planilla) — PLANILLA_ALIMENTOS_ECOFEST.xlsx v2 (23 de octubre)
+ENTREGAS_VERSION = 2
+CONDS = lambda n: G('Conductores (por definir)', n)
+SO = lambda n: G('Equipo Sebastián Ospina', n)
 R = [
- ('VIERNES','Plaza de la Paz','am',[G('CUC',8),G('Gobernación',9),P('Kiki'),P('Ángela'),COND,P('Sebastián Ospina'),P('Juan Pablo'),P('Emanuel')],23),
- ('VIERNES','Plaza de la Paz','alm',[G('CUC',8),G('Gobernación',9),P('Kiki'),P('Pamela'),P('Ángela'),P('Maleja'),COND,P('Sebastián Ospina'),P('Juan Pablo'),P('Daniela'),P('Víctor Franco'),P('Emanuel')],27),
- ('VIERNES','Plaza de la Paz','pm',[G('CUC',8),G('Gobernación',9),P('Kiki'),P('Pamela'),P('Ángela'),P('Maleja'),COND,P('Sebastián Ospina'),P('Juan Pablo'),P('Daniela'),P('Emanuel')],27),
- ('VIERNES','Bosque Urbano Miramar (6:00 a. m.)','am',[G('Chavelita',3),P('Javier Fernández'),P('Julio','Conductores')],None),
- ('VIERNES','Parque Productivo Las Gardenias','am',[P('Beatriz'),P('Emanuel'),COND],3),
- ('VIERNES','Cámara de Comercio (agenda académica)','am',[G('Asistentes agenda académica',180),P('Beatriz'),P('Maleja'),P('Pamela'),P('Daniela')],184),
- ('SABADO','Plaza de la Paz','am',[P('Kendris'),G('Gobernación',5),P('Claudia'),P('Liseth'),P('José Viaña'),P('Kiki'),P('Pamela'),P('Ángela'),P('Maleja'),G('Contabilidad',5),COND,P('Sebastián Ospina'),P('Juan Pablo'),P('Daniela'),P('Emanuel')],23),
- ('SABADO','Plaza de la Paz','alm',[P('Beatriz'),G('Gobernación',7),P('Emanuel'),COND,P('Claudia'),P('Liseth'),P('José Viaña'),P('Kiki'),P('Pamela'),P('Ángela'),P('Maleja'),G('Contabilidad',5),P('Junior'),P('Emanuel (conductor)','Conductores'),P('Sebastián Ospina'),P('Juan Pablo'),P('Daniela')],27),
- ('SABADO','Plaza de la Paz','pm',[P('Beatriz'),G('Gobernación',6),P('Emanuel'),COND,P('Claudia'),P('Liseth'),P('José Viaña'),P('Kiki'),P('Pamela'),P('Ángela'),P('Maleja'),G('Contabilidad',5),P('Sebastián Ospina'),P('Juan Pablo'),P('Daniela')],23),
- ('SABADO','Ecoparque Ciénaga de Mallorquín','am',[P('Marcela','Gobernación'),P('Jessica','Gobernación'),P('Julio','Conductores'),G('Chavelita',3)],6),
- ('DOMINGO','Plaza de la Paz (stand logística)','am',[P('Beatriz'),P('Kendris'),G('Gobernación',7),P('Víctor Franco'),P('José Viaña'),P('Kiki'),P('Pamela'),P('Ángela'),P('Maleja'),COND,P('Sebastián Ospina'),P('Juan Pablo'),P('Daniela'),G('Contabilidad',5)],24),
- ('DOMINGO','Plaza de la Paz (stand logística)','alm',[P('Beatriz'),G('Gobernación',9),P('José Viaña'),P('Kiki'),P('Pamela'),P('Ángela'),P('Maleja'),COND,P('Sebastián Ospina'),P('Juan Pablo'),P('Daniela'),G('Contabilidad',5),P('Emanuel')],24),
- ('DOMINGO','Plaza de la Paz (stand logística)','pm',[P('Beatriz'),G('Gobernación',9),P('Kendris'),P('José Viaña'),P('Kiki'),P('Pamela'),P('Ángela'),P('Maleja'),COND,P('Sebastián Ospina'),P('Juan Pablo'),P('Daniela'),G('Contabilidad',5),P('Emanuel')],26),
- ('DOMINGO','Plaza de la Paz (Social Plogging)','am',[G('Chavelita',3),P('Juan','Gobernación'),P('Marcela','Gobernación'),P('Emanuel'),COND],7),
- ('DOMINGO','Punta Roca','am',[P('Sebastián','Gobernación'),P('Jessica','Gobernación'),P('Gabriel','Gobernación'),COND,P('Pamela'),P('Javier Fernández')],6),
+ ('VIERNES','Plaza de la Paz','am',[G('Creativos',7),G('CUC',13),G('Gobernación',10),P('Kiki'),P('Ángela'),CONDS(1),SO(10),P('Juan Pablo'),P('Emanuel')],45),
+ ('VIERNES','Plaza de la Paz','alm',[G('CUC',13),G('Gobernación',10),P('Kiki'),P('Pamela'),P('Ángela'),P('Maleja'),CONDS(1),SO(10),P('Juan Pablo'),P('Daniela'),P('Víctor Franco'),P('Emanuel')],42),
+ ('VIERNES','Plaza de la Paz','pm',[G('CUC',13),G('Gobernación',10),P('Kiki'),P('Pamela'),P('Ángela'),P('Maleja'),CONDS(1),SO(10),P('Juan Pablo'),P('Daniela'),P('Emanuel')],41),
+ ('VIERNES','Bosque Urbano Miramar (6:00 a. m.)','am',[G('Chavelita',2),P('Javier Fernández'),P('Julio','Conductores')],4),
+ ('SABADO','Plaza de la Paz','am',[G('Gobernación',5),P('Claudia'),P('Liseth'),P('José Viaña'),P('Kiki'),P('Pamela'),P('Ángela'),P('Maleja'),G('Contabilidad',6),CONDS(2),SO(10),P('Juan Pablo'),P('Daniela'),P('Emanuel')],33),
+ ('SABADO','Plaza de la Paz','alm',[G('INUBAC',2),G('Gobernación',7),P('Emanuel'),CONDS(2),P('Claudia'),P('Liseth'),P('José Viaña'),P('Kiki'),P('Pamela'),P('Ángela'),P('Maleja'),G('Contabilidad',5),SO(10),P('Juan Pablo'),P('Daniela')],36),
+ ('SABADO','Plaza de la Paz','pm',[G('INUBAC',2),G('Gobernación',6),P('Emanuel'),CONDS(1),P('Claudia'),P('Liseth'),P('José Viaña'),P('Kiki'),P('Pamela'),P('Ángela'),P('Maleja'),G('Contabilidad',5),SO(1),P('Juan Pablo'),P('Daniela')],23),
+ ('SABADO','Ecoparque Ciénaga de Mallorquín','am',[G('Gobernación',2),CONDS(2),G('Chavelita',3)],7),
+ ('DOMINGO','Plaza de la Paz (stand logística)','am',[G('INUBAC',2),G('Gobernación',7),P('Víctor Franco'),P('José Viaña'),P('Kiki'),P('Pamela'),P('Ángela'),P('Maleja'),CONDS(2),SO(10),P('Juan Pablo'),P('Daniela'),G('Contabilidad',6)],35),
+ ('DOMINGO','Plaza de la Paz (stand logística)','alm',[G('INUBAC',2),G('Gobernación',9),P('José Viaña'),P('Kiki'),P('Pamela'),P('Ángela'),P('Maleja'),CONDS(2),SO(10),P('Juan Pablo'),P('Daniela'),G('Contabilidad',5),P('Emanuel')],36),
+ ('DOMINGO','Plaza de la Paz (stand logística)','pm',[G('INUBAC',2),G('Gobernación',9),P('José Viaña'),P('Kiki'),P('Pamela'),P('Ángela'),P('Maleja'),CONDS(2),SO(10),P('Juan Pablo'),P('Daniela'),G('Contabilidad',6),P('Emanuel')],37),
+ ('DOMINGO','Plaza de la Paz (Social Plogging)','am',[G('Chavelita',2),P('Juan','Gobernación'),P('Marcela','Gobernación'),P('Emanuel'),CONDS(1)],7),
 ]
+# Lugares donde las meriendas no se pagan en efectivo (las cubre Fabián)
+A_CARGO_FABIAN = ['Viernes: Cámara de Comercio (agenda académica)', 'Domingo: Punta Roca']
 COMIDA = {'am': 'Merienda AM', 'alm': 'Almuerzo', 'pm': 'Merienda PM'}
 filas = collections.OrderedDict(); conteos = []
 for dia, ubic, com, lista, escrito in R:
@@ -44,10 +46,12 @@ for dia, ubic, com, lista, escrito in R:
 # Observaciones por fila
 obs = collections.defaultdict(list)
 for k, f in filas.items():
-    if f['beneficiario'].startswith('Conductor (por definir)'): obs[k].append('La planilla dice solo "conductor": falta el nombre')
-    if f['es_grupo']: obs[k].append(f"Grupo sin nombres: falta definir quién recibe y firma por las {max(f['merienda_am'],f['almuerzo'],f['merienda_pm'])} personas")
-    if f['beneficiario'] == 'Asistentes agenda académica': obs[k].append('180 meriendas: confirmar si es catering contratado y no efectivo')
-    if f['beneficiario'] == 'Emanuel (conductor)': obs[k].append('Aparece "Emanuel" y "Emanuel conductor" en el mismo almuerzo: ¿es la misma persona?')
+    n = max(f['merienda_am'], f['almuerzo'], f['merienda_pm'])
+    if f['beneficiario'].startswith('Conductores (por definir)'): obs[k].append('La planilla dice solo "conductor": falta el nombre de quien recibe')
+    elif f['beneficiario'] == 'Equipo Sebastián Ospina': obs[k].append(f'Equipo de {n}: confirmar si Sebastián Ospina recibe y firma por todos')
+    elif f['es_grupo']: obs[k].append(f"Grupo sin nombres: falta definir quién recibe y firma por las {n} personas")
+    if f['beneficiario'] == 'Equipo Sebastián Ospina' and f['fecha'] == '2026-10-24' and f['merienda_pm'] == 1:
+        obs[k].append('Sábado PM la planilla dice "Sebastián Ospina" sin el 10: ¿es 1 o son 10?')
 # misma persona en dos lugares la misma mañana
 porpersona = collections.defaultdict(list)
 for k, f in filas.items():
@@ -93,7 +97,8 @@ transporte = [
   'paradas': [('Montecristo', 'Jessica'), ('Villa Carolina', 'Sebastián')],
   'cruce': 'Misma hora (5:00 a. m.) que Social Plogging: se necesitan dos vehículos. En alimentos figuran además Gabriel, Pamela y Javier Fernández en Punta Roca, sin recogida.'},
 ]
-json.dump({'entregas': list(filas.values()), 'conteos': conteos, 'transporte': transporte, 'transporte_version': TRANSPORTE_VERSION, 'dias': DIA},
+json.dump({'entregas': list(filas.values()), 'conteos': conteos, 'transporte': transporte, 'transporte_version': TRANSPORTE_VERSION,
+           'entregas_version': ENTREGAS_VERSION, 'a_cargo_fabian': A_CARGO_FABIAN, 'dias': DIA},
           open(__file__.replace('construir.py', 'planilla_ecofest.json'), 'w'), ensure_ascii=False, indent=1)
 print(len(filas), 'filas de entrega')
 for c in conteos: print(c['dia'], c['ubicacion'], c['comida'], c['contados'], c['escrito'], '' if c['escrito'] in (None, c['contados']) else '  <-- NO CUADRA')

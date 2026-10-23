@@ -12,7 +12,7 @@ DIAS = d['dias']
 sem = os.path.join(SALIDA, 'semilla'); os.makedirs(sem, exist_ok=True)
 personas = {}
 for i, f in enumerate(d['entregas']):
-    personas[f"{f['fecha']}-{i+1:03d}"] = {
+    personas[f"{f['fecha']}-p{i+1:03d}"] = {
         'fecha': f['fecha'], 'lugar': f['ubicacion'], 'nombre': f['beneficiario'], 'grupo': f['grupo'], 'es_grupo': f['es_grupo'],
         'am': f['merienda_am'], 'al': f['almuerzo'], 'pm': f['merienda_pm'], 'obs': f['observacion'] or '',
         'tarifa': 'completo' if f['almuerzo'] else 'medio-dia', 'orden': i}
@@ -52,16 +52,13 @@ def dia_html(f, n):
 <div id="lista-{f}" style="display:grid;gap:18px"><p class="pie">Cargando la planilla…</p></div></section>'''
 NOMBRES = {'2026-10-23': 'viernes 23 de octubre', '2026-10-24': 'sábado 24 de octubre', '2026-10-25': 'domingo 25 de octubre'}
 pendientes = [
- 'Quién recibe y firma por cada grupo: Gobernación, CUC, Contabilidad, Chavelita y asistentes de la Cámara de Comercio.',
- '¿Las 180 meriendas de la agenda académica son catering contratado o efectivo?',
- 'Nombre de cada "conductor" que la planilla no identifica (aparece en 6 entregas).',
- 'Nombres completos y cédulas de quienes aparecen con apodo: Kiki, Maleja, Chavelita.',
- 'Emanuel y Beatriz (viernes) y Pamela (domingo) tienen merienda AM en dos lugares el mismo día.',
- 'Sábado: ¿"Emanuel" y "Emanuel conductor" son la misma persona?',
- '¿Sebastián (Gobernación, Punta Roca) es el mismo Sebastián Ospina?',
- 'Totales del Excel que no cuadran con los nombres: viernes merienda PM (27 vs 26), sábado merienda PM (23 vs 24), domingo almuerzo (24 vs 25).',
+ 'Meriendas a cargo de Fabián (no se entregan en efectivo): ' + '; '.join(d.get('a_cargo_fabian', [])) + '.',
+ 'Quién recibe y firma por cada grupo: Creativos, CUC, Gobernación, INUBAC, Contabilidad, Chavelita y el equipo de Sebastián Ospina.',
+ 'Nombre de los conductores que la planilla no identifica.',
+ 'Nombres completos y cédulas de quienes aparecen con apodo: Kiki, Maleja.',
+ 'Totales del Excel que no cuadran con los nombres: sábado merienda PM (dice 23, suman 25; además "Sebastián Ospina" va sin el 10) y Plogging del domingo (dice 7, suman 6).',
+ 'Bosques de Miramar: alimentos lo tiene el viernes 6:00 a. m. y transporte el sábado 5:20 a. m. ¿Cuál es el día?',
  'Transporte: placas, conductores y horas de regreso. Social Plogging y Limpieza de playa salen ambos el domingo a las 5:00 a. m.: hacen falta dos vehículos.',
- 'Bosques de Miramar pasó al sábado 5:20 a. m., pero la planilla de alimentos sigue con Miramar el viernes: ¿se mueven también esas meriendas?',
 ]
 page = f'''<title>Planilla Ecofest</title>
 <meta name="claude:viewport-fit-sides" content="cover">

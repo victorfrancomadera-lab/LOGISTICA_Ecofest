@@ -3,13 +3,24 @@
   {
    "fecha": "2026-10-23",
    "ubicacion": "Plaza de la Paz",
+   "beneficiario": "Creativos",
+   "grupo": "Creativos",
+   "es_grupo": true,
+   "merienda_am": 7,
+   "almuerzo": 0,
+   "merienda_pm": 0,
+   "observacion": "Grupo sin nombres: falta definir quién recibe y firma por las 7 personas"
+  },
+  {
+   "fecha": "2026-10-23",
+   "ubicacion": "Plaza de la Paz",
    "beneficiario": "CUC",
    "grupo": "CUC",
    "es_grupo": true,
-   "merienda_am": 8,
-   "almuerzo": 8,
-   "merienda_pm": 8,
-   "observacion": "Grupo sin nombres: falta definir quién recibe y firma por las 8 personas"
+   "merienda_am": 13,
+   "almuerzo": 13,
+   "merienda_pm": 13,
+   "observacion": "Grupo sin nombres: falta definir quién recibe y firma por las 13 personas"
   },
   {
    "fecha": "2026-10-23",
@@ -17,10 +28,10 @@
    "beneficiario": "Gobernación",
    "grupo": "Gobernación",
    "es_grupo": true,
-   "merienda_am": 9,
-   "almuerzo": 9,
-   "merienda_pm": 9,
-   "observacion": "Grupo sin nombres: falta definir quién recibe y firma por las 9 personas"
+   "merienda_am": 10,
+   "almuerzo": 10,
+   "merienda_pm": 10,
+   "observacion": "Grupo sin nombres: falta definir quién recibe y firma por las 10 personas"
   },
   {
    "fecha": "2026-10-23",
@@ -47,24 +58,24 @@
   {
    "fecha": "2026-10-23",
    "ubicacion": "Plaza de la Paz",
-   "beneficiario": "Conductor (por definir)",
-   "grupo": "Conductores",
-   "es_grupo": false,
+   "beneficiario": "Conductores (por definir)",
+   "grupo": "Conductores (por definir)",
+   "es_grupo": true,
    "merienda_am": 1,
    "almuerzo": 1,
    "merienda_pm": 1,
-   "observacion": "La planilla dice solo \"conductor\": falta el nombre"
+   "observacion": "La planilla dice solo \"conductor\": falta el nombre de quien recibe"
   },
   {
    "fecha": "2026-10-23",
    "ubicacion": "Plaza de la Paz",
-   "beneficiario": "Sebastián Ospina",
-   "grupo": "Equipo Ecofest",
-   "es_grupo": false,
-   "merienda_am": 1,
-   "almuerzo": 1,
-   "merienda_pm": 1,
-   "observacion": null
+   "beneficiario": "Equipo Sebastián Ospina",
+   "grupo": "Equipo Sebastián Ospina",
+   "es_grupo": true,
+   "merienda_am": 10,
+   "almuerzo": 10,
+   "merienda_pm": 10,
+   "observacion": "Equipo de 10: confirmar si Sebastián Ospina recibe y firma por todos"
   },
   {
    "fecha": "2026-10-23",
@@ -86,7 +97,7 @@
    "merienda_am": 1,
    "almuerzo": 1,
    "merienda_pm": 1,
-   "observacion": "Tiene merienda AM en dos lugares el mismo día (Plaza de la Paz y Parque Productivo Las Gardenias): confirmar dónde se le entrega"
+   "observacion": null
   },
   {
    "fecha": "2026-10-23",
@@ -138,10 +149,10 @@
    "beneficiario": "Chavelita",
    "grupo": "Chavelita",
    "es_grupo": true,
-   "merienda_am": 3,
+   "merienda_am": 2,
    "almuerzo": 0,
    "merienda_pm": 0,
-   "observacion": "Grupo sin nombres: falta definir quién recibe y firma por las 3 personas"
+   "observacion": "Grupo sin nombres: falta definir quién recibe y firma por las 2 personas"
   },
   {
    "fecha": "2026-10-23",
@@ -159,105 +170,6 @@
    "ubicacion": "Bosque Urbano Miramar (6:00 a. m.)",
    "beneficiario": "Julio",
    "grupo": "Conductores",
-   "es_grupo": false,
-   "merienda_am": 1,
-   "almuerzo": 0,
-   "merienda_pm": 0,
-   "observacion": null
-  },
-  {
-   "fecha": "2026-10-23",
-   "ubicacion": "Parque Productivo Las Gardenias",
-   "beneficiario": "Beatriz",
-   "grupo": "Equipo Ecofest",
-   "es_grupo": false,
-   "merienda_am": 1,
-   "almuerzo": 0,
-   "merienda_pm": 0,
-   "observacion": "Tiene merienda AM en dos lugares el mismo día (Parque Productivo Las Gardenias y Cámara de Comercio (agenda académica)): confirmar dónde se le entrega"
-  },
-  {
-   "fecha": "2026-10-23",
-   "ubicacion": "Parque Productivo Las Gardenias",
-   "beneficiario": "Emanuel",
-   "grupo": "Equipo Ecofest",
-   "es_grupo": false,
-   "merienda_am": 1,
-   "almuerzo": 0,
-   "merienda_pm": 0,
-   "observacion": "Tiene merienda AM en dos lugares el mismo día (Plaza de la Paz y Parque Productivo Las Gardenias): confirmar dónde se le entrega"
-  },
-  {
-   "fecha": "2026-10-23",
-   "ubicacion": "Parque Productivo Las Gardenias",
-   "beneficiario": "Conductor (por definir)",
-   "grupo": "Conductores",
-   "es_grupo": false,
-   "merienda_am": 1,
-   "almuerzo": 0,
-   "merienda_pm": 0,
-   "observacion": "La planilla dice solo \"conductor\": falta el nombre"
-  },
-  {
-   "fecha": "2026-10-23",
-   "ubicacion": "Cámara de Comercio (agenda académica)",
-   "beneficiario": "Asistentes agenda académica",
-   "grupo": "Asistentes agenda académica",
-   "es_grupo": true,
-   "merienda_am": 180,
-   "almuerzo": 0,
-   "merienda_pm": 0,
-   "observacion": "Grupo sin nombres: falta definir quién recibe y firma por las 180 personas · 180 meriendas: confirmar si es catering contratado y no efectivo"
-  },
-  {
-   "fecha": "2026-10-23",
-   "ubicacion": "Cámara de Comercio (agenda académica)",
-   "beneficiario": "Beatriz",
-   "grupo": "Equipo Ecofest",
-   "es_grupo": false,
-   "merienda_am": 1,
-   "almuerzo": 0,
-   "merienda_pm": 0,
-   "observacion": "Tiene merienda AM en dos lugares el mismo día (Parque Productivo Las Gardenias y Cámara de Comercio (agenda académica)): confirmar dónde se le entrega"
-  },
-  {
-   "fecha": "2026-10-23",
-   "ubicacion": "Cámara de Comercio (agenda académica)",
-   "beneficiario": "Maleja",
-   "grupo": "Equipo Ecofest",
-   "es_grupo": false,
-   "merienda_am": 1,
-   "almuerzo": 0,
-   "merienda_pm": 0,
-   "observacion": null
-  },
-  {
-   "fecha": "2026-10-23",
-   "ubicacion": "Cámara de Comercio (agenda académica)",
-   "beneficiario": "Pamela",
-   "grupo": "Equipo Ecofest",
-   "es_grupo": false,
-   "merienda_am": 1,
-   "almuerzo": 0,
-   "merienda_pm": 0,
-   "observacion": null
-  },
-  {
-   "fecha": "2026-10-23",
-   "ubicacion": "Cámara de Comercio (agenda académica)",
-   "beneficiario": "Daniela",
-   "grupo": "Equipo Ecofest",
-   "es_grupo": false,
-   "merienda_am": 1,
-   "almuerzo": 0,
-   "merienda_pm": 0,
-   "observacion": null
-  },
-  {
-   "fecha": "2026-10-24",
-   "ubicacion": "Plaza de la Paz",
-   "beneficiario": "Kendris",
-   "grupo": "Equipo Ecofest",
    "es_grupo": false,
    "merienda_am": 1,
    "almuerzo": 0,
@@ -358,32 +270,32 @@
    "beneficiario": "Contabilidad",
    "grupo": "Contabilidad",
    "es_grupo": true,
-   "merienda_am": 5,
+   "merienda_am": 6,
    "almuerzo": 5,
    "merienda_pm": 5,
-   "observacion": "Grupo sin nombres: falta definir quién recibe y firma por las 5 personas"
+   "observacion": "Grupo sin nombres: falta definir quién recibe y firma por las 6 personas"
   },
   {
    "fecha": "2026-10-24",
    "ubicacion": "Plaza de la Paz",
-   "beneficiario": "Conductor (por definir)",
-   "grupo": "Conductores",
-   "es_grupo": false,
-   "merienda_am": 1,
-   "almuerzo": 1,
+   "beneficiario": "Conductores (por definir)",
+   "grupo": "Conductores (por definir)",
+   "es_grupo": true,
+   "merienda_am": 2,
+   "almuerzo": 2,
    "merienda_pm": 1,
-   "observacion": "La planilla dice solo \"conductor\": falta el nombre"
+   "observacion": "La planilla dice solo \"conductor\": falta el nombre de quien recibe"
   },
   {
    "fecha": "2026-10-24",
    "ubicacion": "Plaza de la Paz",
-   "beneficiario": "Sebastián Ospina",
-   "grupo": "Equipo Ecofest",
-   "es_grupo": false,
-   "merienda_am": 1,
-   "almuerzo": 1,
+   "beneficiario": "Equipo Sebastián Ospina",
+   "grupo": "Equipo Sebastián Ospina",
+   "es_grupo": true,
+   "merienda_am": 10,
+   "almuerzo": 10,
    "merienda_pm": 1,
-   "observacion": null
+   "observacion": "Equipo de 10: confirmar si Sebastián Ospina recibe y firma por todos · Sábado PM la planilla dice \"Sebastián Ospina\" sin el 10: ¿es 1 o son 10?"
   },
   {
    "fecha": "2026-10-24",
@@ -421,68 +333,35 @@
   {
    "fecha": "2026-10-24",
    "ubicacion": "Plaza de la Paz",
-   "beneficiario": "Beatriz",
-   "grupo": "Equipo Ecofest",
-   "es_grupo": false,
+   "beneficiario": "INUBAC",
+   "grupo": "INUBAC",
+   "es_grupo": true,
    "merienda_am": 0,
-   "almuerzo": 1,
-   "merienda_pm": 1,
-   "observacion": null
-  },
-  {
-   "fecha": "2026-10-24",
-   "ubicacion": "Plaza de la Paz",
-   "beneficiario": "Junior",
-   "grupo": "Equipo Ecofest",
-   "es_grupo": false,
-   "merienda_am": 0,
-   "almuerzo": 1,
-   "merienda_pm": 0,
-   "observacion": null
-  },
-  {
-   "fecha": "2026-10-24",
-   "ubicacion": "Plaza de la Paz",
-   "beneficiario": "Emanuel (conductor)",
-   "grupo": "Conductores",
-   "es_grupo": false,
-   "merienda_am": 0,
-   "almuerzo": 1,
-   "merienda_pm": 0,
-   "observacion": "Aparece \"Emanuel\" y \"Emanuel conductor\" en el mismo almuerzo: ¿es la misma persona?"
+   "almuerzo": 2,
+   "merienda_pm": 2,
+   "observacion": "Grupo sin nombres: falta definir quién recibe y firma por las 2 personas"
   },
   {
    "fecha": "2026-10-24",
    "ubicacion": "Ecoparque Ciénaga de Mallorquín",
-   "beneficiario": "Marcela",
+   "beneficiario": "Gobernación",
    "grupo": "Gobernación",
-   "es_grupo": false,
-   "merienda_am": 1,
+   "es_grupo": true,
+   "merienda_am": 2,
    "almuerzo": 0,
    "merienda_pm": 0,
-   "observacion": null
+   "observacion": "Grupo sin nombres: falta definir quién recibe y firma por las 2 personas"
   },
   {
    "fecha": "2026-10-24",
    "ubicacion": "Ecoparque Ciénaga de Mallorquín",
-   "beneficiario": "Jessica",
-   "grupo": "Gobernación",
-   "es_grupo": false,
-   "merienda_am": 1,
+   "beneficiario": "Conductores (por definir)",
+   "grupo": "Conductores (por definir)",
+   "es_grupo": true,
+   "merienda_am": 2,
    "almuerzo": 0,
    "merienda_pm": 0,
-   "observacion": null
-  },
-  {
-   "fecha": "2026-10-24",
-   "ubicacion": "Ecoparque Ciénaga de Mallorquín",
-   "beneficiario": "Julio",
-   "grupo": "Conductores",
-   "es_grupo": false,
-   "merienda_am": 1,
-   "almuerzo": 0,
-   "merienda_pm": 0,
-   "observacion": null
+   "observacion": "La planilla dice solo \"conductor\": falta el nombre de quien recibe"
   },
   {
    "fecha": "2026-10-24",
@@ -498,24 +377,13 @@
   {
    "fecha": "2026-10-25",
    "ubicacion": "Plaza de la Paz (stand logística)",
-   "beneficiario": "Beatriz",
-   "grupo": "Equipo Ecofest",
-   "es_grupo": false,
-   "merienda_am": 1,
-   "almuerzo": 1,
-   "merienda_pm": 1,
-   "observacion": null
-  },
-  {
-   "fecha": "2026-10-25",
-   "ubicacion": "Plaza de la Paz (stand logística)",
-   "beneficiario": "Kendris",
-   "grupo": "Equipo Ecofest",
-   "es_grupo": false,
-   "merienda_am": 1,
-   "almuerzo": 0,
-   "merienda_pm": 1,
-   "observacion": null
+   "beneficiario": "INUBAC",
+   "grupo": "INUBAC",
+   "es_grupo": true,
+   "merienda_am": 2,
+   "almuerzo": 2,
+   "merienda_pm": 2,
+   "observacion": "Grupo sin nombres: falta definir quién recibe y firma por las 2 personas"
   },
   {
    "fecha": "2026-10-25",
@@ -570,7 +438,7 @@
    "merienda_am": 1,
    "almuerzo": 1,
    "merienda_pm": 1,
-   "observacion": "Tiene merienda AM en dos lugares el mismo día (Plaza de la Paz (stand logística) y Punta Roca): confirmar dónde se le entrega"
+   "observacion": null
   },
   {
    "fecha": "2026-10-25",
@@ -597,24 +465,24 @@
   {
    "fecha": "2026-10-25",
    "ubicacion": "Plaza de la Paz (stand logística)",
-   "beneficiario": "Conductor (por definir)",
-   "grupo": "Conductores",
-   "es_grupo": false,
-   "merienda_am": 1,
-   "almuerzo": 1,
-   "merienda_pm": 1,
-   "observacion": "La planilla dice solo \"conductor\": falta el nombre"
+   "beneficiario": "Conductores (por definir)",
+   "grupo": "Conductores (por definir)",
+   "es_grupo": true,
+   "merienda_am": 2,
+   "almuerzo": 2,
+   "merienda_pm": 2,
+   "observacion": "La planilla dice solo \"conductor\": falta el nombre de quien recibe"
   },
   {
    "fecha": "2026-10-25",
    "ubicacion": "Plaza de la Paz (stand logística)",
-   "beneficiario": "Sebastián Ospina",
-   "grupo": "Equipo Ecofest",
-   "es_grupo": false,
-   "merienda_am": 1,
-   "almuerzo": 1,
-   "merienda_pm": 1,
-   "observacion": null
+   "beneficiario": "Equipo Sebastián Ospina",
+   "grupo": "Equipo Sebastián Ospina",
+   "es_grupo": true,
+   "merienda_am": 10,
+   "almuerzo": 10,
+   "merienda_pm": 10,
+   "observacion": "Equipo de 10: confirmar si Sebastián Ospina recibe y firma por todos"
   },
   {
    "fecha": "2026-10-25",
@@ -644,10 +512,10 @@
    "beneficiario": "Contabilidad",
    "grupo": "Contabilidad",
    "es_grupo": true,
-   "merienda_am": 5,
+   "merienda_am": 6,
    "almuerzo": 5,
-   "merienda_pm": 5,
-   "observacion": "Grupo sin nombres: falta definir quién recibe y firma por las 5 personas"
+   "merienda_pm": 6,
+   "observacion": "Grupo sin nombres: falta definir quién recibe y firma por las 6 personas"
   },
   {
    "fecha": "2026-10-25",
@@ -666,10 +534,10 @@
    "beneficiario": "Chavelita",
    "grupo": "Chavelita",
    "es_grupo": true,
-   "merienda_am": 3,
+   "merienda_am": 2,
    "almuerzo": 0,
    "merienda_pm": 0,
-   "observacion": "Grupo sin nombres: falta definir quién recibe y firma por las 3 personas"
+   "observacion": "Grupo sin nombres: falta definir quién recibe y firma por las 2 personas"
   },
   {
    "fecha": "2026-10-25",
@@ -707,79 +575,13 @@
   {
    "fecha": "2026-10-25",
    "ubicacion": "Plaza de la Paz (Social Plogging)",
-   "beneficiario": "Conductor (por definir)",
-   "grupo": "Conductores",
-   "es_grupo": false,
+   "beneficiario": "Conductores (por definir)",
+   "grupo": "Conductores (por definir)",
+   "es_grupo": true,
    "merienda_am": 1,
    "almuerzo": 0,
    "merienda_pm": 0,
-   "observacion": "La planilla dice solo \"conductor\": falta el nombre"
-  },
-  {
-   "fecha": "2026-10-25",
-   "ubicacion": "Punta Roca",
-   "beneficiario": "Sebastián",
-   "grupo": "Gobernación",
-   "es_grupo": false,
-   "merienda_am": 1,
-   "almuerzo": 0,
-   "merienda_pm": 0,
-   "observacion": null
-  },
-  {
-   "fecha": "2026-10-25",
-   "ubicacion": "Punta Roca",
-   "beneficiario": "Jessica",
-   "grupo": "Gobernación",
-   "es_grupo": false,
-   "merienda_am": 1,
-   "almuerzo": 0,
-   "merienda_pm": 0,
-   "observacion": null
-  },
-  {
-   "fecha": "2026-10-25",
-   "ubicacion": "Punta Roca",
-   "beneficiario": "Gabriel",
-   "grupo": "Gobernación",
-   "es_grupo": false,
-   "merienda_am": 1,
-   "almuerzo": 0,
-   "merienda_pm": 0,
-   "observacion": null
-  },
-  {
-   "fecha": "2026-10-25",
-   "ubicacion": "Punta Roca",
-   "beneficiario": "Conductor (por definir)",
-   "grupo": "Conductores",
-   "es_grupo": false,
-   "merienda_am": 1,
-   "almuerzo": 0,
-   "merienda_pm": 0,
-   "observacion": "La planilla dice solo \"conductor\": falta el nombre"
-  },
-  {
-   "fecha": "2026-10-25",
-   "ubicacion": "Punta Roca",
-   "beneficiario": "Pamela",
-   "grupo": "Equipo Ecofest",
-   "es_grupo": false,
-   "merienda_am": 1,
-   "almuerzo": 0,
-   "merienda_pm": 0,
-   "observacion": "Tiene merienda AM en dos lugares el mismo día (Plaza de la Paz (stand logística) y Punta Roca): confirmar dónde se le entrega"
-  },
-  {
-   "fecha": "2026-10-25",
-   "ubicacion": "Punta Roca",
-   "beneficiario": "Javier Fernández",
-   "grupo": "Equipo Ecofest",
-   "es_grupo": false,
-   "merienda_am": 1,
-   "almuerzo": 0,
-   "merienda_pm": 0,
-   "observacion": null
+   "observacion": "La planilla dice solo \"conductor\": falta el nombre de quien recibe"
   }
  ],
  "conteos": [
@@ -788,71 +590,55 @@
    "dia": "Viernes 23",
    "ubicacion": "Plaza de la Paz",
    "comida": "Merienda AM",
-   "contados": 23,
-   "escrito": 23
+   "contados": 45,
+   "escrito": 45
   },
   {
    "fecha": "2026-10-23",
    "dia": "Viernes 23",
    "ubicacion": "Plaza de la Paz",
    "comida": "Almuerzo",
-   "contados": 27,
-   "escrito": 27
+   "contados": 42,
+   "escrito": 42
   },
   {
    "fecha": "2026-10-23",
    "dia": "Viernes 23",
    "ubicacion": "Plaza de la Paz",
    "comida": "Merienda PM",
-   "contados": 26,
-   "escrito": 27
+   "contados": 41,
+   "escrito": 41
   },
   {
    "fecha": "2026-10-23",
    "dia": "Viernes 23",
    "ubicacion": "Bosque Urbano Miramar (6:00 a. m.)",
    "comida": "Merienda AM",
-   "contados": 5,
-   "escrito": null
-  },
-  {
-   "fecha": "2026-10-23",
-   "dia": "Viernes 23",
-   "ubicacion": "Parque Productivo Las Gardenias",
-   "comida": "Merienda AM",
-   "contados": 3,
-   "escrito": 3
-  },
-  {
-   "fecha": "2026-10-23",
-   "dia": "Viernes 23",
-   "ubicacion": "Cámara de Comercio (agenda académica)",
-   "comida": "Merienda AM",
-   "contados": 184,
-   "escrito": 184
+   "contados": 4,
+   "escrito": 4
   },
   {
    "fecha": "2026-10-24",
    "dia": "Sábado 24",
    "ubicacion": "Plaza de la Paz",
    "comida": "Merienda AM",
-   "contados": 23,
-   "escrito": 23
+   "contados": 33,
+   "escrito": 33
   },
   {
    "fecha": "2026-10-24",
    "dia": "Sábado 24",
    "ubicacion": "Plaza de la Paz",
    "comida": "Almuerzo",
-   "contados": 27,
-   "escrito": 27
+   "contados": 36,
+   "escrito": 36
   },
   {
    "fecha": "2026-10-24",
    "dia": "Sábado 24",
    "ubicacion": "Plaza de la Paz",
    "comida": "Merienda PM",
-   "contados": 24,
+   "contados": 25,
    "escrito": 23
   },
   {
@@ -860,48 +646,40 @@
    "dia": "Sábado 24",
    "ubicacion": "Ecoparque Ciénaga de Mallorquín",
    "comida": "Merienda AM",
-   "contados": 6,
-   "escrito": 6
-  },
-  {
-   "fecha": "2026-10-25",
-   "dia": "Domingo 25",
-   "ubicacion": "Plaza de la Paz (stand logística)",
-   "comida": "Merienda AM",
-   "contados": 24,
-   "escrito": 24
-  },
-  {
-   "fecha": "2026-10-25",
-   "dia": "Domingo 25",
-   "ubicacion": "Plaza de la Paz (stand logística)",
-   "comida": "Almuerzo",
-   "contados": 25,
-   "escrito": 24
-  },
-  {
-   "fecha": "2026-10-25",
-   "dia": "Domingo 25",
-   "ubicacion": "Plaza de la Paz (stand logística)",
-   "comida": "Merienda PM",
-   "contados": 26,
-   "escrito": 26
-  },
-  {
-   "fecha": "2026-10-25",
-   "dia": "Domingo 25",
-   "ubicacion": "Plaza de la Paz (Social Plogging)",
-   "comida": "Merienda AM",
    "contados": 7,
    "escrito": 7
   },
   {
    "fecha": "2026-10-25",
    "dia": "Domingo 25",
-   "ubicacion": "Punta Roca",
+   "ubicacion": "Plaza de la Paz (stand logística)",
+   "comida": "Merienda AM",
+   "contados": 35,
+   "escrito": 35
+  },
+  {
+   "fecha": "2026-10-25",
+   "dia": "Domingo 25",
+   "ubicacion": "Plaza de la Paz (stand logística)",
+   "comida": "Almuerzo",
+   "contados": 36,
+   "escrito": 36
+  },
+  {
+   "fecha": "2026-10-25",
+   "dia": "Domingo 25",
+   "ubicacion": "Plaza de la Paz (stand logística)",
+   "comida": "Merienda PM",
+   "contados": 37,
+   "escrito": 37
+  },
+  {
+   "fecha": "2026-10-25",
+   "dia": "Domingo 25",
+   "ubicacion": "Plaza de la Paz (Social Plogging)",
    "comida": "Merienda AM",
    "contados": 6,
-   "escrito": 6
+   "escrito": 7
   }
  ],
  "transporte": [
@@ -1045,6 +823,11 @@
   }
  ],
  "transporte_version": 2,
+ "entregas_version": 2,
+ "a_cargo_fabian": [
+  "Viernes: Cámara de Comercio (agenda académica)",
+  "Domingo: Punta Roca"
+ ],
  "dias": {
   "2026-10-23": "Viernes 23",
   "2026-10-24": "Sábado 24",
