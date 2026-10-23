@@ -90,6 +90,9 @@ const rutas = [
   [/^#\/almuerzos\/importar$/, vistaImportarEntregas],
   [/^#\/almuerzos\/(\d+)$/, (m) => vistaEntrega(m[1])],
   [/^#\/almuerzos\/(\d+)\/editar$/, (m) => vistaFormEntrega(m[1])],
+  [/^#\/caja$/, vistaCaja],
+  [/^#\/caja\/nueva(\?.*)?$/, vistaFormGasto],
+  [/^#\/caja\/(\d+)$/, (m) => vistaGasto(m[1])],
   [/^#\/mas$/, vistaMas],
   [/^#\/vehiculos$/, vistaVehiculos],
   [/^#\/vehiculos\/nuevo$/, () => vistaFormVehiculo()],
@@ -104,7 +107,7 @@ async function enrutar() {
   detenerPoll();
   document.getElementById('tabs').hidden = false;
   const hash = location.hash || '#/traslados';
-  const tab = hash.split('/')[1];
+  const tab = hash.split('/')[1].split('?')[0];
   const tabActiva = ['vehiculos', 'usuarios', 'ajustes'].includes(tab) ? 'mas' : tab;
   document.querySelectorAll('.tabs a').forEach((a) => a.classList.toggle('activo', a.dataset.tab === tabActiva));
   for (const [re, fn] of rutas) {
@@ -228,7 +231,7 @@ function tarjetaTraslado(t) {
 }
 
 async function vistaTraslado(id) {
-  const t = await api('/traslados/' + id);
+  const [t, gastos] = await Promise.all([api('/traslados/' + id), api('/gastos?traslado_id=' + id)]);
   pintar(`
     <p class="no-print"><a href="#/traslados">← Traslados</a></p>
     <div class="fila entre"><h1 style="margin:0">${t.hora_recogida ? h(t.hora_recogida) + ' · ' : ''}${h(t.pasajeros)}</h1></div>
@@ -263,7 +266,11 @@ async function vistaTraslado(id) {
       ${t.contacto_tel ? `<a class="btn" href="tel:${h(telLimpio(t.contacto_tel))}">📞 Pasajero</a>
         <a class="btn" href="${waLink(t.contacto_tel)}" target="_blank" rel="noopener">💬 WhatsApp pasajero</a>` : ''}
       <button class="btn" id="compartir">📤 Enviar ficha</button>
+      <a class="btn" href="#/caja/nueva?traslado=${t.id}">💵 Dar efectivo para transporte</a>
     </div>
+    ${gastos.length ? `<div class="tarjeta"><div class="suave pequeno">EFECTIVO ENTREGADO PARA ESTE TRASLADO</div>
+      ${gastos.map((g) => `<div class="fila entre" style="margin-top:6px"><a href="#/caja/${g.id}">${h(consecutivoCaja(g.id))} · ${h(g.beneficiario)}</a>
+        <b style="${g.estado === 'anulado' ? 'text-decoration:line-through' : ''}">${pesos(g.monto)}</b></div>`).join('')}</div>` : ''}
 
     <h2>Actualizar estado</h2>
     <input id="nota-estado" placeholder="Nota opcional (ej. llegó con 10 min de retraso)">
@@ -453,6 +460,7 @@ async function vistaAlmuerzos(silencioso) {
   pintar(`
     <div class="fila entre"><h1>Alimentación</h1>
       <div class="fila">${esAdmin() ? '<a class="btn chico" href="#/almuerzos/importar">Importar</a>' : ''}
+      <a class="btn chico" href="#/caja/nueva?cat=Alimentación">💵 Otro gasto</a>
       <a class="btn primario chico" href="#/almuerzos/nueva">+ Persona</a></div>
     </div>
     ${barraFechas(estado.fechaAl, fechas, 'fecha-al')}
@@ -688,6 +696,175 @@ function vistaImportarEntregas() {
   });
 }
 
+// ================= CAJA MENOR =================
+// Salidas de efectivo que no son las entregas de alimentación planeadas: transporte por cuenta propia, compras, etc.
+const CATEGORIAS = { Transporte: '🚕', 'Alimentación': '🍽️', Materiales: '🧰', 'Logística': '📦', Otros: '💵' };
+const consecutivoCaja = (id) => `CM-${String(id).padStart(4, '0')}`;
+function leerParams() {
+  const i = location.hash.indexOf('?');
+  return new URLSearchParams(i < 0 ? '' : location.hash.slice(i + 1));
+}
+
+async function vistaCaja(silencioso) {
+  if (!estado.fechaCajaAuto) { estado.fechaCaja = hoy(); estado.fechaCajaAuto = true; }
+  const [lista, todos, res] = await Promise.all([
+    api('/gastos?fecha=' + estado.fechaCaja), api('/gastos'), api('/gastos/resumen?fecha=' + estado.fechaCaja),
+  ]);
+  const fechas = [...new Set(todos.map((g) => g.fecha))];
+  const vivos = lista.filter((g) => g.estado === 'registrado');
+  const totalDia = vivos.reduce((s, g) => s + g.monto, 0);
+  const y = window.scrollY;
+  pintar(`
+    <div class="fila entre"><h1>Caja menor</h1><a class="btn primario chico" href="#/caja/nueva">+ Registrar salida</a></div>
+    ${barraFechas(estado.fechaCaja, fechas, 'fecha-caja')}
+    <div class="resumen">
+      <div><b>${pesos(totalDia)}</b><span>Salidas del día (${vivos.length})</span></div>
+      <div><b>${pesos(res.total_gastos + res.total_entregas)}</b><span>Total salidas del evento</span></div>
+      <div><b>${res.saldo === null ? '—' : pesos(res.saldo)}</b><span>${res.saldo === null ? (esAdmin() ? '<a href="#/ajustes">Definir base de caja</a>' : 'Sin base de caja') : 'Saldo de ' + pesos(res.base)}</span></div>
+    </div>
+    <p class="suave pequeno">Total del evento = caja menor ${pesos(res.total_gastos)} + recibidos de alimentación ${pesos(res.total_entregas)}.</p>
+    ${res.por_categoria.length ? `<div class="fila" style="margin-bottom:10px">${res.por_categoria.map((c) => `<span class="chip">${CATEGORIAS[c.categoria] || ''} ${h(c.categoria)} · ${pesos(c.total)}</span>`).join('')}</div>` : ''}
+    ${lista.length ? lista.map((g) => `<a class="tarjeta" href="#/caja/${g.id}">
+      <div class="fila entre"><span class="titulo">${CATEGORIAS[g.categoria] || ''} ${h(g.concepto)}</span>
+        <b style="${g.estado === 'anulado' ? 'text-decoration:line-through;color:var(--suave)' : ''}">${pesos(g.monto)}</b></div>
+      <div class="suave pequeno">${h(consecutivoCaja(g.id))} · ${h(g.categoria)} · recibió ${h(g.beneficiario)} · ${h(g.medio)}${g.tiene_soporte ? ' · 📎 soporte' : ''}</div>
+      ${g.traslado_desc ? `<div class="suave pequeno">🚐 ${h(g.traslado_desc)}</div>` : ''}
+      ${g.estado === 'anulado' ? `<div class="obs pequeno">Anulado: ${h(g.anulado_motivo || '')}</div>` : ''}
+    </a>`).join('') : '<div class="tarjeta suave">No hay salidas de caja este día. Use “+ Registrar salida”.</div>'}
+  `);
+  if (silencioso) window.scrollTo(0, y);
+  enlazarFechas((f) => { estado.fechaCaja = f; vistaCaja(); }, 'fecha-caja');
+  cadaRato(vistaCaja);
+}
+
+async function vistaFormGasto() {
+  const prm = leerParams();
+  const trasladoId = prm.get('traslado');
+  const t = trasladoId ? await api('/traslados/' + trasladoId).catch(() => null) : null;
+  const fecha = t ? t.fecha : estado.fechaCaja || hoy();
+  const traslados = await api('/traslados?fecha=' + fecha);
+  const cat = t ? 'Transporte' : (prm.get('cat') || 'Transporte');
+  const concepto = t ? `Transporte por cuenta propia: ${t.pasajeros}${t.destino ? ' → ' + t.destino : ''}` : (prm.get('concepto') || '');
+  document.getElementById('tabs').hidden = true; // evita tocar las pestañas por error al firmar
+  pintar(`
+    <p><a href="${t ? '#/traslados/' + t.id : '#/caja'}">← Volver</a></p>
+    <h1>Registrar salida de caja</h1>
+    <form id="f-gasto">
+      <label>Categoría</label>
+      <div class="cats">${Object.entries(CATEGORIAS).map(([c, i]) => `<label class="cat"><input type="radio" name="categoria" value="${h(c)}" ${c === cat ? 'checked' : ''}><span>${i} ${h(c)}</span></label>`).join('')}</div>
+      <label>¿Para qué es el dinero? *</label>
+      <input name="concepto" value="${h(concepto)}" required placeholder="Ej. Taxi Montecristo → Plaza de la Paz, hielo, cinta">
+      <div class="dos">
+        <div><label>Fecha *</label><input type="date" name="fecha" value="${h(fecha)}" required></div>
+        <div><label>Traslado relacionado</label><select name="traslado_id"><option value="">Ninguno</option>
+          ${traslados.map((x) => `<option value="${x.id}" ${t && x.id === t.id ? 'selected' : ''}>${h(x.hora_recogida || '--:--')} · ${h(x.pasajeros)}</option>`).join('')}</select></div>
+      </div>
+      <h2>Quién recibe</h2>
+      <label>Nombre completo *</label><input name="beneficiario" required autocomplete="off">
+      <div class="dos">
+        <div><label>Cédula *</label><input name="documento" inputmode="numeric" required autocomplete="off"></div>
+        <div><label>Celular</label><input name="telefono" type="tel" autocomplete="off"></div>
+      </div>
+      <div class="dos">
+        <div><label>Monto *</label><input name="monto" inputmode="numeric" required placeholder="$"></div>
+        <div><label>Medio</label><select name="medio">${['Efectivo', 'Nequi', 'Daviplata', 'Transferencia'].map((m) => `<option>${m}</option>`).join('')}</select></div>
+      </div>
+      <label>Foto del soporte (opcional)</label>
+      <input type="file" id="soporte" accept="image/*" capture="environment">
+      <img id="soporte-prev" alt="" style="display:none;max-height:140px;margin-top:6px;border-radius:8px">
+      <label class="check" style="margin-top:14px"><input type="checkbox" id="acepto" required><span id="texto-decl"></span></label>
+      <label>Firma de quien recibe</label>
+      <div class="firma-caja"><canvas id="lienzo"></canvas><div class="linea"></div><div class="ayuda">Firme aquí con el dedo</div></div>
+      <div class="fila entre" style="margin-top:6px"><span class="suave pequeno" id="geo-txt"></span><button type="button" class="btn chico" id="limpiar">Borrar firma</button></div>
+      <p><button class="btn primario bloque grande" id="guardar">Registrar salida</button></p>
+    </form>`);
+  const form = document.getElementById('f-gasto');
+  const decl = () => {
+    const m = Number(String(form.monto.value).replace(/[^\d]/g, '')) || 0;
+    document.getElementById('texto-decl').textContent = `Yo, ${form.beneficiario.value || '______'}, identificado(a) con documento ${form.documento.value || '______'}, declaro que recibí ${pesos(m)} (${form.medio.value.toLowerCase()}) para: ${form.concepto.value || '______'}, del evento ${estado.ajustes.evento || 'Ecofest'}.`;
+  };
+  form.oninput = decl; form.onchange = decl; decl();
+  const firma = lienzoFirma(document.getElementById('lienzo'));
+  document.getElementById('limpiar').onclick = firma.limpiar;
+  let soporte = null;
+  document.getElementById('soporte').onchange = async (ev) => {
+    const f = ev.target.files[0]; if (!f) return;
+    try { soporte = await fotoLiviana(f, 1200); const img = document.getElementById('soporte-prev'); img.src = soporte; img.style.display = 'block'; }
+    catch { toast('No se pudo leer la foto', true); }
+  };
+  let geo = {};
+  if (navigator.geolocation) navigator.geolocation.getCurrentPosition(
+    (p) => { geo = { lat: p.coords.latitude, lng: p.coords.longitude }; document.getElementById('geo-txt').textContent = '📍 Ubicación registrada'; },
+    () => { document.getElementById('geo-txt').textContent = 'Sin ubicación'; }, { timeout: 8000, maximumAge: 120000 });
+  form.onsubmit = async (ev) => {
+    ev.preventDefault();
+    if (firma.vacia()) return toast('Falta la firma', true);
+    const btn = document.getElementById('guardar'); btn.disabled = true;
+    try {
+      const datos = { ...formDatos(form), firma: firma.png(), soporte, ...geo };
+      const { id } = await api('/gastos', { method: 'POST', body: datos });
+      estado.fechaCaja = datos.fecha;
+      document.getElementById('tabs').hidden = false;
+      toast('Salida registrada ✔'); location.hash = '#/caja/' + id;
+    } catch (err) { toast(err.message, true); btn.disabled = false; }
+  };
+}
+// Foto del soporte en JPEG reducido para que no pese en la base
+function fotoLiviana(file, max) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); res(c.toDataURL('image/jpeg', 0.7));
+    };
+    img.onerror = rej; img.src = URL.createObjectURL(file);
+  });
+}
+
+async function vistaGasto(id) {
+  const g = await api('/gastos/' + id);
+  const a = estado.ajustes;
+  pintar(`
+    <p class="no-print"><a href="#/caja">← Caja menor</a></p>
+    <div class="comprobante">
+      <div class="cab">
+        <div>${a.logo ? `<img src="${h(a.logo)}" alt="${h(a.evento)}">` : `<b style="font-size:22px">${h(a.evento)}</b>`}</div>
+        <div class="num">Caja menor<br>${h(g.consecutivo)}</div>
+      </div>
+      ${g.estado === 'anulado' ? `<div class="anulado">ANULADO · ${h(g.anulado_motivo || '')}</div>` : ''}
+      <p style="margin:12px 0 0">Comprobante de salida de dinero del evento <b>${h(a.evento)}</b>.</p>
+      <table>
+        <tr><td>Categoría</td><td>${CATEGORIAS[g.categoria] || ''} ${h(g.categoria)}</td></tr>
+        <tr><td>Concepto</td><td><b>${h(g.concepto)}</b></td></tr>
+        <tr><td>Recibió</td><td><b>${h(g.beneficiario)}</b></td></tr>
+        <tr><td>Documento</td><td>${h(g.documento || '—')}</td></tr>
+        ${g.telefono ? `<tr><td>Celular</td><td>${h(g.telefono)}</td></tr>` : ''}
+        <tr><td>Valor</td><td class="monto">${pesos(g.monto)}</td></tr>
+        <tr><td>Medio</td><td>${h(g.medio)}</td></tr>
+        <tr><td>Fecha</td><td>${h(fechaLarga(g.fecha))}</td></tr>
+        ${g.traslado_desc ? `<tr><td>Traslado</td><td><a href="#/traslados/${g.traslado_id}">${h(g.traslado_desc)}</a></td></tr>` : ''}
+        <tr><td>Registrado</td><td>${h(utcALocal(g.creado))} · ${h(g.registrado_por_nombre || '')}</td></tr>
+        ${g.lat ? `<tr><td>Ubicación</td><td><a href="https://www.google.com/maps?q=${g.lat},${g.lng}" target="_blank" rel="noopener">${Number(g.lat).toFixed(5)}, ${Number(g.lng).toFixed(5)}</a></td></tr>` : ''}
+      </table>
+      <p class="legal">Yo, ${h(g.beneficiario)}, identificado(a) con documento ${h(g.documento || '')}, declaro que recibí ${pesos(g.monto)} (${h(g.medio.toLowerCase())}) para: ${h(g.concepto)}, del evento ${h(a.evento)}.</p>
+      <div class="firma">${g.firma ? `<img src="${g.firma}" alt="Firma de ${h(g.beneficiario)}">` : ''}
+        <p style="text-align:center;margin:4px 0 0">${h(g.beneficiario)}<br><span class="suave pequeno">Firma de quien recibe</span></p></div>
+      ${g.soporte ? `<p class="suave pequeno" style="margin-top:14px">Soporte adjunto:</p><img src="${g.soporte}" alt="Soporte" style="max-width:100%;border-radius:8px;border:1px solid var(--borde)">` : ''}
+    </div>
+    <div class="acciones no-print">
+      <button class="btn primario" onclick="window.print()">🖨️ Imprimir / PDF</button>
+      ${esAdmin() && g.estado === 'registrado' ? '<button class="btn peligro" id="anular">Anular</button>' : ''}
+    </div>`);
+  const an = document.getElementById('anular');
+  if (an) an.onclick = async () => {
+    const motivo = prompt('Motivo de la anulación:');
+    if (!motivo) return;
+    try { await api(`/gastos/${g.id}/anular`, { method: 'POST', body: { motivo } }); toast('Anulado'); vistaGasto(g.id); }
+    catch (err) { toast(err.message, true); }
+  };
+}
+
 // ================= MÁS =================
 function vistaMas() {
   pintar(`
@@ -699,6 +876,7 @@ function vistaMas() {
     <div class="acciones">
       <a class="btn" href="/api/export/traslados.csv">⬇️ Traslados</a>
       <a class="btn" href="/api/export/entregas.csv">⬇️ Entregas de alimentación</a>
+      <a class="btn" href="/api/export/gastos.csv">⬇️ Caja menor</a>
       ${esAdmin() ? '<a class="btn" href="/api/export/respaldo.db">💾 Respaldo completo</a>' : ''}
     </div>
     <p><button class="btn peligro bloque" id="salir">Cerrar sesión</button></p>
@@ -838,6 +1016,8 @@ async function vistaAjustes() {
         <div><label>Valor de cada merienda (AM o PM)</label><input name="valor_merienda" inputmode="numeric" value="${h(a.valor_merienda)}"></div>
         <div><label>Valor de cada almuerzo</label><input name="valor_almuerzo" inputmode="numeric" value="${h(a.valor_almuerzo)}"></div>
       </div>
+      <label>Base de caja (efectivo total asignado al evento)</label><input name="base_caja" inputmode="numeric" value="${h(a.base_caja || '')}" placeholder="$">
+      <p class="suave pequeno">Con la base, la pestaña Caja muestra el saldo: base − salidas de caja menor − recibidos de alimentación.</p>
       <p class="suave pequeno">Al guardar, se recalcula el monto de todas las entregas pendientes según sus comidas. Las ya firmadas no cambian.</p>
       <label>Monto por defecto (personas agregadas sin comidas)</label><input name="monto_defecto" inputmode="numeric" value="${h(a.monto_defecto)}">
       <p><button class="btn primario bloque grande">Guardar</button></p>

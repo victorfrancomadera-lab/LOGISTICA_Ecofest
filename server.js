@@ -109,6 +109,29 @@ for (const [col, tipo] of [['ubicacion', 'TEXT'], ['grupo', 'TEXT'], ['es_grupo'
 
 if (!db.prepare('PRAGMA table_info(usuarios)').all().some((c) => c.name === 'telefono')) db.exec('ALTER TABLE usuarios ADD COLUMN telefono TEXT');
 
+// Caja menor: salidas de efectivo que no son las entregas de alimentación planeadas (transporte propio, compras, etc.)
+db.exec(`CREATE TABLE IF NOT EXISTS gastos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  fecha TEXT NOT NULL,
+  categoria TEXT NOT NULL,
+  concepto TEXT NOT NULL,
+  beneficiario TEXT NOT NULL,
+  documento TEXT,
+  telefono TEXT,
+  monto INTEGER NOT NULL,
+  medio TEXT NOT NULL DEFAULT 'Efectivo',
+  traslado_id INTEGER REFERENCES traslados(id) ON DELETE SET NULL,
+  firma TEXT,
+  soporte TEXT,
+  registrado_por INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  lat REAL,
+  lng REAL,
+  estado TEXT NOT NULL DEFAULT 'registrado',
+  anulado_motivo TEXT,
+  creado TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS ix_gastos_fecha ON gastos(fecha);`);
+
 // ---------- utilidades ----------
 function hashPin(pin) {
   const salt = crypto.randomBytes(16).toString('hex');
@@ -130,6 +153,7 @@ function getAjustes() {
     color_secundario: '#8DC63F',
     logo: '/logo.jpg',
     monto_defecto: '20000',
+    base_caja: '0',
     valor_merienda: '0',
     valor_almuerzo: '0',
   };
@@ -206,7 +230,7 @@ api.get('/yo', (req, res) => res.json({ ...req.user, version: VERSION, persisten
 // --- ajustes ---
 api.get('/ajustes', (req, res) => res.json(getAjustes()));
 api.put('/ajustes', soloAdmin, (req, res) => {
-  const permitidas = ['evento', 'color_primario', 'color_secundario', 'logo', 'monto_defecto', 'valor_merienda', 'valor_almuerzo'];
+  const permitidas = ['evento', 'color_primario', 'color_secundario', 'logo', 'monto_defecto', 'valor_merienda', 'valor_almuerzo', 'base_caja'];
   const up = db.prepare('INSERT INTO ajustes (clave, valor) VALUES (?,?) ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor');
   for (const k of permitidas) if (k in req.body) up.run(k, req.body[k] === null ? null : String(req.body[k]));
   recalcularPendientes();
@@ -491,6 +515,68 @@ api.delete('/entregas/:id', soloAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// --- caja menor ---
+const CATEGORIAS_CAJA = ['Transporte', 'Alimentación', 'Materiales', 'Logística', 'Otros'];
+const MEDIOS_CAJA = ['Efectivo', 'Nequi', 'Daviplata', 'Transferencia'];
+const SQL_GASTOS = `SELECT g.*, u.nombre AS registrado_por_nombre,
+  CASE WHEN t.id IS NULL THEN NULL ELSE t.fecha || ' ' || COALESCE(t.hora_recogida, '') || ' · ' || t.pasajeros END AS traslado_desc
+  FROM gastos g LEFT JOIN usuarios u ON u.id = g.registrado_por LEFT JOIN traslados t ON t.id = g.traslado_id`;
+api.get('/gastos', (req, res) => {
+  const { fecha, categoria, traslado_id } = req.query;
+  const cond = []; const params = [];
+  if (fecha) { cond.push('g.fecha = ?'); params.push(fecha); }
+  if (categoria) { cond.push('g.categoria = ?'); params.push(categoria); }
+  if (traslado_id) { cond.push('g.traslado_id = ?'); params.push(traslado_id); }
+  const where = cond.length ? ` WHERE ${cond.join(' AND ')}` : '';
+  // sin firma ni foto en el listado, para que cargue rápido en el celular
+  res.json(db.prepare(`${SQL_GASTOS}${where} ORDER BY g.id DESC`).all(...params)
+    .map(({ firma, soporte, ...g }) => ({ ...g, tiene_soporte: !!soporte })));
+});
+// Totales: salidas de caja menor + recibidos de alimentación firmados, contra la base de caja
+api.get('/gastos/resumen', (req, res) => {
+  const { fecha } = req.query;
+  const f = fecha ? ' AND fecha = ?' : ''; const p = fecha ? [fecha] : [];
+  const porCategoria = db.prepare(`SELECT categoria, COUNT(*) n, SUM(monto) total FROM gastos WHERE estado = 'registrado'${f} GROUP BY categoria`).all(...p);
+  const totalGastos = db.prepare(`SELECT COALESCE(SUM(monto),0) t FROM gastos WHERE estado = 'registrado'`).get().t;
+  const totalEntregas = db.prepare(`SELECT COALESCE(SUM(monto),0) t FROM entregas WHERE estado = 'entregado'`).get().t;
+  const base = Math.round(Number(getAjustes().base_caja) || 0);
+  res.json({ por_categoria: porCategoria, total_gastos: totalGastos, total_entregas: totalEntregas, base,
+    saldo: base ? base - totalGastos - totalEntregas : null, categorias: CATEGORIAS_CAJA, medios: MEDIOS_CAJA });
+});
+api.get('/gastos/:id', (req, res) => {
+  const g = db.prepare(`${SQL_GASTOS} WHERE g.id = ?`).get(req.params.id);
+  if (!g) return res.status(404).json({ error: 'No existe' });
+  res.json({ ...g, consecutivo: consecutivoCaja(g.id) });
+});
+api.post('/gastos', (req, res) => {
+  const b = req.body;
+  const monto = Math.round(Number(String(b.monto ?? '').replace(/[^\d]/g, '')) || 0);
+  if (!txt(b.fecha)) return res.status(400).json({ error: 'Falta la fecha' });
+  if (!CATEGORIAS_CAJA.includes(b.categoria)) return res.status(400).json({ error: 'Escoja una categoría' });
+  if (!txt(b.beneficiario)) return res.status(400).json({ error: 'Escriba quién recibe el dinero' });
+  if (!txt(b.documento)) return res.status(400).json({ error: 'Falta la cédula de quien recibe' });
+  if (!txt(b.concepto)) return res.status(400).json({ error: 'Escriba para qué es el dinero' });
+  if (!monto) return res.status(400).json({ error: 'El monto debe ser mayor a cero' });
+  if (!/^data:image\/png;base64,/.test(b.firma || '') || b.firma.length < 2000) return res.status(400).json({ error: 'Falta la firma de quien recibe' });
+  if (b.soporte && (!/^data:image\/(jpeg|png);base64,/.test(b.soporte) || b.soporte.length > 1500000)) return res.status(400).json({ error: 'La foto del soporte no es válida o es muy pesada' });
+  const traslado = b.traslado_id ? db.prepare('SELECT id FROM traslados WHERE id = ?').get(b.traslado_id) : null;
+  const r = db.prepare(`INSERT INTO gastos (fecha, categoria, concepto, beneficiario, documento, telefono, monto, medio, traslado_id,
+    firma, soporte, registrado_por, lat, lng) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    txt(b.fecha), b.categoria, txt(b.concepto), txt(b.beneficiario), txt(b.documento), txt(b.telefono), monto,
+    MEDIOS_CAJA.includes(b.medio) ? b.medio : 'Efectivo', traslado ? traslado.id : null, b.firma, txt(b.soporte),
+    req.user.id, b.lat ?? null, b.lng ?? null);
+  const id = Number(r.lastInsertRowid);
+  if (traslado) db.prepare('INSERT INTO bitacora_traslados (traslado_id, estado, nota, usuario_id) SELECT id, estado, ?, ? FROM traslados WHERE id = ?')
+    .run(`Efectivo para transporte: $${monto.toLocaleString('es-CO')} a ${txt(b.beneficiario)} (${consecutivoCaja(id)})`, req.user.id, traslado.id);
+  res.json({ id });
+});
+api.post('/gastos/:id/anular', soloAdmin, (req, res) => {
+  const motivo = txt(req.body.motivo);
+  if (!motivo) return res.status(400).json({ error: 'Escriba el motivo de la anulación' });
+  db.prepare(`UPDATE gastos SET estado = 'anulado', anulado_motivo = ? WHERE id = ?`).run(motivo, req.params.id);
+  res.json({ ok: true });
+});
+
 // --- exportes CSV (Excel en español usa ;) ---
 function csv(res, nombre, cols, filas) {
   const esc = (v) => {
@@ -520,6 +606,14 @@ api.get('/export/entregas.csv', (req, res) => {
     ['lng', 'Longitud'], ['observacion', 'Observación'], ['anulada_motivo', 'Motivo anulación']], filas);
 });
 const consecutivo = (id) => `ECO-${String(id).padStart(4, '0')}`;
+const consecutivoCaja = (id) => `CM-${String(id).padStart(4, '0')}`;
+api.get('/export/gastos.csv', (req, res) => {
+  const filas = db.prepare(`${SQL_GASTOS} ORDER BY g.fecha, g.id`).all().map((g) => ({ ...g, consecutivo: consecutivoCaja(g.id) }));
+  csv(res, 'caja_menor_ecofest.csv', [['consecutivo', 'Comprobante'], ['fecha', 'Fecha'], ['categoria', 'Categoría'], ['concepto', 'Concepto'],
+    ['beneficiario', 'Recibió'], ['documento', 'Documento'], ['telefono', 'Teléfono'], ['monto', 'Monto'], ['medio', 'Medio'],
+    ['traslado_desc', 'Traslado'], ['estado', 'Estado'], ['registrado_por_nombre', 'Registró'], ['creado', 'Registrado (UTC)'],
+    ['lat', 'Latitud'], ['lng', 'Longitud'], ['anulado_motivo', 'Motivo anulación']], filas);
+});
 
 // Respaldo completo de la base (solo admin)
 api.get('/export/respaldo.db', soloAdmin, (req, res) => {
