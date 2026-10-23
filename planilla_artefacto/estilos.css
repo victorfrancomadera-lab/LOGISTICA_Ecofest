@@ -19,7 +19,7 @@ header p { font-size:14px }
 header p { margin:0; color:#CFE0D4; max-width:60ch }
 nav.dias { position:sticky; top:env(safe-area-inset-top, 0px); z-index:5; background:var(--bg); border-bottom:1px solid var(--line) }
 nav.dias .wrap { display:grid; gap:8px; padding-block:10px }
-.tabs { display:grid; grid-template-columns:repeat(5, 1fr); gap:6px }
+.tabs { display:grid; grid-template-columns:repeat(6, 1fr); gap:4px }
 .tabs button { font:inherit; font-weight:700; font-size:14px; padding:8px 4px; border-radius:10px; border:1px solid var(--line); background:var(--card); color:var(--fg); cursor:pointer; white-space:nowrap }
 .tabs button[aria-selected="true"] { background:var(--tablero); border-color:var(--tablero); color:#fff; box-shadow:inset 0 -3px 0 var(--lima) }
 .tabs button:focus-visible { outline:3px solid var(--lima); outline-offset:2px }
@@ -111,3 +111,18 @@ input.campo, .fila2 input, .hoja input { font:inherit; padding:10px 12px; border
 .confirmar { background:var(--warn-bg); color:var(--warn-fg); border-radius:10px; padding:10px 12px; display:grid; gap:8px }
 th.acta { font-size:10px; letter-spacing:0; padding-inline:0 }
 .tag { white-space:nowrap }
+
+.tabs button { padding-inline:2px }
+@media (max-width:420px) { .tabs button { font-size:12px } }
+.cats { display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:6px }
+.hoja label.cat { display:block }
+.cat input { position:absolute; opacity:0; width:1px; height:1px }
+.cat span { display:flex; align-items:center; justify-content:center; min-height:44px; padding:6px; border:1px solid var(--line); border-radius:10px; background:var(--card); font-weight:600; cursor:pointer }
+.cat input:checked + span { border-color:var(--tablero); box-shadow:inset 0 0 0 2px var(--lima) }
+.cat input:focus-visible + span { outline:3px solid var(--lima) }
+button.gasto { all:unset; cursor:pointer; display:grid; gap:4px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px }
+button.gasto:focus-visible { outline:3px solid var(--lima) }
+.gasto .g-top { display:flex; justify-content:space-between; gap:10px }
+.gasto .g-monto { font-variant-numeric:tabular-nums; white-space:nowrap }
+.gasto.anulado .g-monto { text-decoration:line-through; color:var(--muted) }
+#cats-caja { display:flex; flex-wrap:wrap; gap:6px }

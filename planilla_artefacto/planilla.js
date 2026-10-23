@@ -2,7 +2,7 @@
 //   personas/{id}   alimentación por día y lugar      actas/{id}    recibido firmado (mismo id de la persona)
 //   rutas/{id}      transporte                         config/tarifas  {lista: [{id, nombre, valor}]}
 const DIAS = { '2026-10-22': 'jueves 22 de octubre', '2026-10-23': 'viernes 23 de octubre', '2026-10-24': 'sábado 24 de octubre', '2026-10-25': 'domingo 25 de octubre' };
-const D = { personas: {}, actas: {}, rutas: {}, tarifas: [] };
+const D = { personas: {}, actas: {}, rutas: {}, tarifas: [], caja: {} };
 let db = null, usuario = null, descargas = null, puedeEscribir = true, puedeAdministrar = false, conectado = false;
 const velo = document.getElementById('velo'), hoja = document.getElementById('hoja');
 const q = document.getElementById('buscar');
@@ -38,7 +38,7 @@ function sinConexion() {
 }
 
 // ================= pintar =================
-function pintarTodo() { Object.keys(DIAS).forEach(pintarDia); pintarRutas(); pintarTarifas(); pintarResumen(); }
+function pintarTodo() { Object.keys(DIAS).forEach(pintarDia); pintarRutas(); pintarTarifas(); pintarResumen(); pintarCaja(); }
 
 function pintarDia(fecha) {
   const cont = document.getElementById('lista-' + fecha);
@@ -95,7 +95,9 @@ function pintarRutas() {
       <dt>Vehículo</dt><dd>${falta([r.placa, r.vehiculo].filter(Boolean).join(' · '))}</dd><dt>Regreso</dt><dd>${falta(r.hora_regreso)}${r.lugar_regreso ? ' desde ' + esc(r.lugar_regreso) : ''}</dd>
       ${r.equipos ? `<dt>Equipos</dt><dd>${esc(r.equipos)}</dd>` : ''}</dl>
     ${r.notas ? `<p class="cruce">${esc(r.notas)}</p>` : ''}
-    <button type="button" class="btn sec" data-ruta="${esc(id)}">Editar ruta</button></article>`).join('');
+    <div class="fila2"><button type="button" class="btn sec" data-ruta="${esc(id)}">Editar ruta</button>
+      <button type="button" class="btn sec" data-efectivo="${esc(id)}">💵 Dar efectivo</button></div>
+    ${Object.values(D.caja).filter((g) => g.ruta === id && g.estado !== 'anulado').map((g) => `<span class="pie">💵 ${pesos(g.monto)} a ${esc(g.recibe)}</span>`).join('')}</article>`).join('');
 }
 
 function pintarTarifas() {
@@ -388,6 +390,171 @@ function editarTarifas() {
   });
 }
 
+// ================= caja menor =================
+// caja/{id}: salidas de efectivo que no son los recibidos de alimentación (transporte propio, compras…)
+// config/caja: {base} efectivo total asignado al evento (solo el administrador lo cambia)
+const CATEGORIAS = { Transporte: '🚕', 'Alimentación': '🍽️', Materiales: '🧰', 'Logística': '📦', Otros: '💵' };
+const MEDIOS = ['Efectivo', 'Nequi', 'Daviplata', 'Transferencia'];
+let baseCaja = 0;
+function ordenCaja() { return Object.entries(D.caja).sort(([, a], [, b]) => String(a.creado).localeCompare(String(b.creado))); }
+function numCaja(id) { const i = ordenCaja().findIndex(([k]) => k === id); return 'CM-' + String(i + 1).padStart(4, '0'); }
+function pintarCaja() {
+  const cont = document.getElementById('lista-caja');
+  if (!cont) return;
+  const lista = ordenCaja().reverse();
+  const vivos = lista.filter(([, g]) => g.estado !== 'anulado');
+  const totalCaja = vivos.reduce((s, [, g]) => s + (g.monto || 0), 0);
+  const totalRecibidos = Object.values(D.actas).reduce((s, a) => s + (a.monto || 0), 0);
+  const porCat = {};
+  vivos.forEach(([, g]) => (porCat[g.categoria] = (porCat[g.categoria] || 0) + g.monto));
+  document.getElementById('tot-caja').innerHTML = `<span><b>${pesos(totalCaja)}</b> caja menor</span><span><b>${pesos(totalRecibidos)}</b> recibidos</span>
+    ${baseCaja ? `<span><b>${pesos(baseCaja - totalCaja - totalRecibidos)}</b> saldo de ${pesos(baseCaja)}</span>` : ''}`;
+  document.getElementById('cats-caja').innerHTML = Object.entries(porCat).map(([c, v]) => `<span class="tag">${CATEGORIAS[c] || ''} ${esc(c)} · ${pesos(v)}</span>`).join(' ');
+  if (!lista.length) { cont.innerHTML = `<p class="pie">${conectado ? 'Todavía no hay salidas de caja. Use “+ Registrar salida”.' : 'Cargando caja…'}</p>`; return; }
+  let html = '', dia = '';
+  for (const [id, g] of lista) {
+    if (g.fecha !== dia) { dia = g.fecha; html += `<h3 style="margin-top:6px">${esc(DIAS[dia] || dia)}</h3>`; }
+    html += `<button type="button" class="gasto${g.estado === 'anulado' ? ' anulado' : ''}" data-gasto="${esc(id)}">
+      <span class="g-top"><b>${CATEGORIAS[g.categoria] || ''} ${esc(g.concepto)}</b><b class="g-monto">${pesos(g.monto)}</b></span>
+      <span class="pie">${esc(numCaja(id))} · recibió ${esc(g.recibe)} · ${esc(g.medio)}${g.soporte ? ' · 📎 soporte' : ''}${g.ruta_desc ? ' · 🚐 ' + esc(g.ruta_desc) : ''}${g.estado === 'anulado' ? ' · ANULADO' : ''}</span></button>`;
+  }
+  cont.innerHTML = html;
+}
+function fotoLiviana(file, max) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); res(c.toDataURL('image/jpeg', 0.6));
+    };
+    img.onerror = rej; img.src = URL.createObjectURL(file);
+  });
+}
+function nuevaSalida({ categoria = 'Transporte', fecha, rutaId } = {}) {
+  const bloqueo = sinConexion();
+  if (bloqueo) return abrir(`${cab('Caja menor', 'Registrar salida')}${aviso(bloqueo)}`);
+  const r = rutaId ? D.rutas[rutaId] : null;
+  const f0 = r ? r.fecha : fecha || '2026-10-23';
+  const concepto = r ? `Transporte por cuenta propia: ${r.actividad}${r.destino ? ' → ' + r.destino : ''}` : '';
+  const rutas = Object.entries(D.rutas).sort(([, a], [, b]) => (a.fecha + a.hora_recogida).localeCompare(b.fecha + b.hora_recogida));
+  abrir(`${cab('Caja menor', 'Registrar salida de efectivo')}
+    <form id="f-g" style="display:grid;gap:12px" novalidate>
+      <fieldset class="opciones"><legend>Categoría</legend><div class="cats">
+        ${Object.entries(CATEGORIAS).map(([c, i]) => `<label class="cat"><input type="radio" name="g-cat" value="${esc(c)}" ${c === (r ? 'Transporte' : categoria) ? 'checked' : ''}><span>${i} ${esc(c)}</span></label>`).join('')}</div></fieldset>
+      <label>¿Para qué es el dinero?<input id="g-concepto" value="${esc(concepto)}" placeholder="Taxi Montecristo → Plaza de la Paz, hielo, cinta…"></label>
+      <div class="dos">
+        <label>Día<select id="g-fecha">${Object.entries(DIAS).map(([f, n]) => `<option value="${f}" ${f === f0 ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+        <label>Ruta relacionada<select id="g-ruta"><option value="">Ninguna</option>${rutas.map(([id, x]) => `<option value="${esc(id)}" ${id === rutaId ? 'selected' : ''}>${esc((DIAS[x.fecha] || '').split(' ')[0])} ${esc(x.hora_recogida || '')} · ${esc(x.actividad)}</option>`).join('')}</select></label>
+      </div>
+      <label>Nombre de quien recibe<input id="g-quien" autocomplete="off"></label>
+      <div class="dos">
+        <label>Cédula<input id="g-doc" inputmode="numeric" autocomplete="off"></label>
+        <label>Celular (opcional)<input id="g-tel" type="tel" autocomplete="off"></label>
+      </div>
+      <div class="dos">
+        <label>Monto<input id="g-monto" inputmode="numeric" placeholder="$"></label>
+        <label>Medio<select id="g-medio">${MEDIOS.map((m) => `<option>${m}</option>`).join('')}</select></label>
+      </div>
+      <label>Foto del soporte (opcional)<input type="file" id="g-foto" accept="image/*" capture="environment"></label>
+      <img id="g-prev" alt="" hidden style="max-height:140px;border-radius:8px">
+      <label class="decl"><input type="checkbox" id="g-acepto"><span id="g-texto"></span></label>
+      <div><b style="font-size:14px">Firma de quien recibe</b>
+        <div class="lienzo" style="margin-top:4px"><canvas id="g-lienzo"></canvas><div class="linea"></div><div class="ayuda">Firme aquí con el dedo</div></div>
+        <div class="fila2" style="justify-content:flex-end;margin-top:6px"><button type="button" class="btn sec" id="g-borrar">Borrar firma</button></div></div>
+      <p class="msg" id="g-msg" hidden></p>
+      <button class="btn" id="g-ok" style="min-height:54px;font-size:17px">Registrar salida</button>
+    </form>`, () => {
+    const f = document.getElementById('f-g'), g = (k) => document.getElementById(k);
+    const decl = () => { g('g-texto').textContent = `Yo, ${g('g-quien').value.trim() || '______'}, identificado(a) con documento ${g('g-doc').value.trim() || '______'}, declaro que recibí ${pesos(entero(g('g-monto').value))} (${g('g-medio').value.toLowerCase()}) para: ${g('g-concepto').value.trim() || '______'}, del evento Ecofest.`; };
+    f.addEventListener('input', decl); f.addEventListener('change', decl); decl();
+    const firma = lienzoFirma(g('g-lienzo')); g('g-borrar').onclick = firma.limpiar;
+    let foto = null;
+    g('g-foto').onchange = async (ev) => {
+      const file = ev.target.files[0]; if (!file) return;
+      try { foto = await fotoLiviana(file, 900); g('g-prev').src = foto; g('g-prev').hidden = false; } catch { toast('No se pudo leer la foto.'); }
+    };
+    f.onsubmit = async (ev) => {
+      ev.preventDefault();
+      const msg = g('g-msg'), falta = (t) => { msg.textContent = t; msg.hidden = false; };
+      const cat = (f.querySelector('input[name=g-cat]:checked') || {}).value;
+      const datos = { categoria: cat, concepto: g('g-concepto').value.trim(), fecha: g('g-fecha').value, ruta: g('g-ruta').value,
+        recibe: g('g-quien').value.trim(), documento: g('g-doc').value.trim(), telefono: g('g-tel').value.trim(),
+        monto: entero(g('g-monto').value), medio: g('g-medio').value };
+      if (!datos.concepto) return falta('Escriba para qué es el dinero.');
+      if (!datos.recibe) return falta('Escriba quién recibe el dinero.');
+      if (!datos.documento) return falta('Falta la cédula.');
+      if (!datos.monto) return falta('Escriba el monto.');
+      if (!g('g-acepto').checked) return falta('La persona debe marcar la declaración.');
+      if (firma.vacia()) return falta('Falta la firma.');
+      msg.hidden = true;
+      const rr = datos.ruta && D.rutas[datos.ruta];
+      const doc = { ...datos, ruta_desc: rr ? `${rr.actividad}${rr.hora_recogida ? ' ' + rr.hora_recogida : ''}` : '', estado: 'registrado',
+        declaracion: g('g-texto').textContent, firma: firma.imagen(), soporte: foto, creado: new Date().toISOString(),
+        registrado_por: usuario ? await usuario.id().catch(() => null) : null };
+      if (JSON.stringify(doc).length > 240000) return falta('La foto es muy pesada. Tómela de nuevo más de lejos.');
+      const id = 'cm-' + Date.now().toString(36);
+      if (await guardar(db.collection('caja').doc(id), doc, g('g-ok'), msg)) {
+        D.caja[id] = doc; pintarCaja(); cerrar(); toast(`Salida registrada: ${numCaja(id)}`);
+      }
+    };
+  });
+}
+function verSalida(id) {
+  const x = D.caja[id];
+  abrir(`${cab(`${DIAS[x.fecha] || x.fecha} · ${x.categoria}`, 'Caja menor ' + numCaja(id))}
+    ${x.estado === 'anulado' ? aviso('ANULADO: ' + (x.anulado_motivo || '')) : ''}
+    <div class="resumen-acta"><b style="font-size:18px">${esc(x.concepto)}</b>
+      <span>Recibió <b>${esc(x.recibe)}</b> · CC ${esc(x.documento)}${x.telefono ? ' · ' + esc(x.telefono) : ''}</span>
+      <span style="font-size:24px;font-weight:800">${pesos(x.monto)}</span>
+      <span>${esc(x.medio)}${x.ruta_desc ? ' · 🚐 ' + esc(x.ruta_desc) : ''}</span>
+      <span class="pie" id="s-firmado">Registrado: ${esc(fechaHora(x.creado))}</span></div>
+    <p style="margin:0;font-size:14px">${esc(x.declaracion)}</p>
+    <div class="firma-img"><img src="${esc(x.firma)}" alt="Firma de ${esc(x.recibe)}"></div>
+    ${x.soporte ? `<div class="firma-img"><img src="${esc(x.soporte)}" alt="Soporte"></div>` : ''}
+    ${puedeAdministrar && x.estado !== 'anulado' ? `<div class="fila2"><input id="s-motivo" placeholder="Motivo para anular" style="flex:1"><button type="button" class="btn peligro" id="s-anular">Anular salida</button></div>` : ''}`, () => {
+    if (usuario && x.registrado_por) usuario.profiles([x.registrado_por]).then((ps) => {
+      const n = ps && ps[x.registrado_por] && ps[x.registrado_por].name, el = document.getElementById('s-firmado'); if (n && el) el.textContent += ' · ' + n;
+    }).catch(() => {});
+    const b = document.getElementById('s-anular');
+    if (b) b.onclick = async () => {
+      const motivo = document.getElementById('s-motivo').value.trim();
+      if (!motivo) return toast('Escriba el motivo para anular.');
+      try { await db.collection('caja').doc(id).update({ estado: 'anulado', anulado_motivo: motivo }); D.caja[id] = { ...x, estado: 'anulado', anulado_motivo: motivo }; pintarCaja(); cerrar(); toast('Salida anulada'); }
+      catch { toast('No se pudo anular. Intente de nuevo.'); }
+    };
+  });
+}
+function editarBase() {
+  abrir(`${cab('Caja menor', 'Base de caja')}<p class="pie" style="margin:0">Efectivo total asignado al evento. El saldo es la base menos la caja menor y los recibidos de alimentación.</p>
+    <form id="f-base" style="display:grid;gap:10px"><label>Base<input id="b-valor" inputmode="numeric" value="${baseCaja || ''}" placeholder="$"></label>
+    <p class="msg" id="b-msg" hidden></p><button class="btn" id="b-ok">Guardar base</button></form>`, () => {
+    document.getElementById('f-base').onsubmit = async (ev) => {
+      ev.preventDefault();
+      const v = entero(document.getElementById('b-valor').value);
+      if (await guardar(db.doc('config/caja'), { base: v }, document.getElementById('b-ok'), document.getElementById('b-msg'))) { baseCaja = v; pintarCaja(); cerrar(); toast('Base guardada'); }
+    };
+  });
+}
+document.addEventListener('click', (ev) => {
+  const v = ev.target.closest('[data-gasto]'); if (v) return verSalida(v.dataset.gasto);
+  const e = ev.target.closest('[data-efectivo]'); if (e) return nuevaSalida({ rutaId: e.dataset.efectivo });
+  const o = ev.target.closest('[data-otro-gasto]'); if (o) return nuevaSalida({ categoria: 'Alimentación', fecha: o.dataset.otroGasto });
+  if (ev.target.closest('#nueva-salida')) return nuevaSalida({});
+  if (ev.target.closest('#editar-base')) return editarBase();
+});
+document.getElementById('exp-caja').onclick = async () => {
+  const lista = ordenCaja();
+  if (!lista.length) return toast('Todavía no hay salidas de caja.');
+  if (!descargas) return toast('Esta vista no permite descargar archivos.');
+  const cols = [['num', 'Comprobante'], ['fecha', 'Fecha'], ['categoria', 'Categoría'], ['concepto', 'Concepto'], ['recibe', 'Recibió'], ['documento', 'Cédula'],
+    ['telefono', 'Celular'], ['monto', 'Monto'], ['medio', 'Medio'], ['ruta_desc', 'Ruta'], ['estado', 'Estado'], ['creado', 'Registrado'], ['anulado_motivo', 'Motivo anulación']];
+  const celda = (v) => { const s = String(v ?? ''); return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const filas = lista.map(([id, x]) => cols.map(([k]) => celda(k === 'num' ? numCaja(id) : k === 'creado' ? fechaHora(x.creado) : x[k])).join(';'));
+  try { await descargas.save({ filename: 'caja_menor_ecofest.csv', data: '﻿' + [cols.map((c) => c[1]).join(';'), ...filas].join('\r\n') }); }
+  catch (err) { if (err && err.code !== 'declined') toast('No se pudo descargar.'); }
+};
+
 // ---------- firma con el dedo ----------
 function lienzoFirma(canvas) {
   const ctx = canvas.getContext('2d');
@@ -491,7 +658,8 @@ const estadoDb = document.querySelector('.estado-db');
     snap.docs.forEach((d) => { if (d.exists) D[destino][d.id] = d.data(); });
     pintarTodo();
   }, () => { estadoDb.textContent = 'Se perdió la conexión con la base. Recargue la página.'; });
-  escuchar('personas', 'personas'); escuchar('actas', 'actas'); escuchar('rutas', 'rutas');
+  escuchar('personas', 'personas'); escuchar('actas', 'actas'); escuchar('rutas', 'rutas'); escuchar('caja', 'caja');
+  db.doc('config/caja').onSnapshot((d) => { baseCaja = d.exists ? entero(d.data().base) : 0; pintarCaja(); }, () => {});
   db.doc('config/tarifas').onSnapshot((d) => { D.tarifas = d.exists && Array.isArray(d.data().lista) ? d.data().lista : []; pintarTodo(); }, () => {});
   estadoDb.textContent = puedeEscribir ? 'Conectado: todo se guarda en línea y lo ve el equipo al instante.' : 'Acceso de solo lectura.';
 })();

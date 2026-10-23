@@ -48,7 +48,7 @@ button.nombre b { text-decoration:underline; text-decoration-color:var(--line); 
 '''
 def dia_html(f, n):
     return f'''<section class="dia panel" data-panel="d{f[-2:]}"><div class="diahead"><h2>{n.capitalize()}</h2><div class="chips" id="tot-{f}"></div></div>
-<div class="acciones-dia"><span class="pie">Toque un nombre para editarlo. Toque la casilla para registrar el recibido.</span><button type="button" class="btn" data-nueva="{f}">+ Agregar persona</button></div>
+<div class="acciones-dia"><span class="pie">Toque un nombre para editarlo. Toque la casilla para registrar el recibido.</span><div class="fila2"><button type="button" class="btn sec" data-otro-gasto="{f}">💵 Otro gasto</button><button type="button" class="btn" data-nueva="{f}">+ Agregar persona</button></div></div>
 <div id="lista-{f}" style="display:grid;gap:18px"><p class="pie">Cargando la planilla…</p></div></section>'''
 NOMBRES = {'2026-10-23': 'viernes 23 de octubre', '2026-10-24': 'sábado 24 de octubre', '2026-10-25': 'domingo 25 de octubre'}
 pendientes = [
@@ -67,13 +67,19 @@ page = f'''<title>Planilla Ecofest</title>
 <header><div class="wrap"><img src="{LOGO}" alt="Ecofest"><p>Alimentos y transporte, persona por persona. Todo se guarda en línea para el equipo.</p></div></header>
 <nav class="dias" aria-label="Días"><div class="wrap"><div class="tabs" role="tablist">
 <button role="tab" data-tab="d23">Vie 23</button><button role="tab" data-tab="d24">Sáb 24</button><button role="tab" data-tab="d25">Dom 25</button>
-<button role="tab" data-tab="transporte">Transporte</button><button role="tab" data-tab="resumen">Valores</button></div>
+<button role="tab" data-tab="transporte">Rutas</button><button role="tab" data-tab="caja">Caja</button><button role="tab" data-tab="resumen">Valores</button></div>
 <input id="buscar" type="search" placeholder="Buscar nombre o grupo en este día" aria-label="Buscar nombre o grupo"></div></nav>
 <main class="wrap">
 {"".join(dia_html(f, n) for f, n in NOMBRES.items())}
 <section class="dia panel" data-panel="transporte"><div class="diahead"><h2>Transporte</h2><div class="chips" id="tot-rutas"></div></div>
 <div class="acciones-dia"><span class="pie">Cada ruta lleva sus paradas, conductor, placa y horas.</span><button type="button" class="btn" id="nueva-ruta">+ Agregar ruta</button></div>
 <div class="rutas" id="lista-rutas"><p class="pie">Cargando rutas…</p></div></section>
+<section class="dia panel" data-panel="caja"><div class="diahead"><h2>Caja menor</h2><div class="chips" id="tot-caja"></div></div>
+<div class="acciones-dia"><span class="pie">Efectivo que sale por fuera de los recibidos: transporte propio, compras, imprevistos.</span>
+<div class="fila2"><button type="button" class="btn sec" id="editar-base">Base de caja</button><button type="button" class="btn" id="nueva-salida">+ Registrar salida</button></div></div>
+<div id="cats-caja"></div>
+<div id="lista-caja" style="display:grid;gap:8px"><p class="pie">Cargando caja…</p></div>
+<div class="fila2"><button type="button" class="btn sec" id="exp-caja">Descargar caja menor (Excel/CSV)</button></div></section>
 <section class="dia panel" data-panel="resumen"><div class="diahead"><h2>Valores y resumen</h2></div>
 <div class="card"><h2>Tarifas de entrega</h2><p class="pie" style="margin:0">Al registrar un recibido se escoge la tarifa y el monto sale solo: valor × personas.</p><div id="tarifas"></div></div>
 <div class="resumen" id="resumen-gen"></div>
@@ -97,7 +103,7 @@ function mostrar(id) {{
 tabs.forEach(b => b.addEventListener('click', () => mostrar(b.dataset.tab)));
 let inicial = location.hash.slice(1);
 if (!inicial) {{ try {{ inicial = localStorage.getItem('ecofest-tab') || '' }} catch (e) {{}} }}
-mostrar(inicial === 'resumen' || inicial === 'transporte' || /^d2[345]$/.test(inicial) ? inicial : 'd23');
+mostrar(inicial === 'resumen' || inicial === 'transporte' || inicial === 'caja' || /^d2[345]$/.test(inicial) ? inicial : 'd23');
 </script>
 <script>{open(os.path.join(AQUI, 'planilla.js')).read()}</script>'''
 open(os.path.join(SALIDA, 'planilla-ecofest.html'), 'w').write(page)
