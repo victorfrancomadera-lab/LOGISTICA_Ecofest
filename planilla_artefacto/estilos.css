@@ -126,3 +126,7 @@ button.gasto:focus-visible { outline:3px solid var(--lima) }
 .gasto .g-monto { font-variant-numeric:tabular-nums; white-space:nowrap }
 .gasto.anulado .g-monto { text-decoration:line-through; color:var(--muted) }
 #cats-caja { display:flex; flex-wrap:wrap; gap:6px }
+
+th.jor, td.jor { width:96px; text-align:center }
+td.jor .tag { margin-left:0; background:var(--grupo); color:var(--fg); border-color:var(--tablero); text-transform:none; letter-spacing:0; font-size:12px }
+td.jor .tag.medio { background:var(--warn-bg); color:var(--warn-fg); border-color:var(--warn-fg) }

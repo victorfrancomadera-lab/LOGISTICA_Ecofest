@@ -21,7 +21,7 @@ for i, r in enumerate(d['transporte']):
     rutas[f'r{i+1}'] = {'fecha': r['fecha'], 'actividad': r['actividad'], 'destino': r['destino'], 'hora_actividad': '',
         'paradas': [{'lugar': l, 'quien': q} for l, q in r['paradas']], 'hora_recogida': r['hora'], 'conductor': '', 'conductor_tel': '',
         'placa': '', 'vehiculo': '', 'hora_regreso': '', 'lugar_regreso': '', 'equipos': r['actividad'] if r['tipo'] == 'carga' else '', 'notas': r['cruce']}
-tarifas = {'lista': [{'id': 'completo', 'nombre': 'Completo', 'valor': 40000}, {'id': 'medio-dia', 'nombre': 'Medio día', 'valor': 30000}]}
+tarifas = {'lista': [{'id': 'completo', 'nombre': 'Día entero', 'valor': 40000}, {'id': 'medio-dia', 'nombre': 'Medio día', 'valor': 30000}]}
 for col, docs in (('personas', personas), ('rutas', rutas)):
     os.makedirs(os.path.join(sem, col), exist_ok=True)
     for k, v in docs.items(): json.dump(v, open(os.path.join(sem, col, k + '.json'), 'w'), ensure_ascii=False)
@@ -81,7 +81,7 @@ page = f'''<title>Planilla Ecofest</title>
 <div id="lista-caja" style="display:grid;gap:8px"><p class="pie">Cargando caja…</p></div>
 <div class="fila2"><button type="button" class="btn sec" id="exp-caja">Descargar caja menor (Excel/CSV)</button></div></section>
 <section class="dia panel" data-panel="resumen"><div class="diahead"><h2>Valores y resumen</h2></div>
-<div class="card"><h2>Tarifas de entrega</h2><p class="pie" style="margin:0">Al registrar un recibido se escoge la tarifa y el monto sale solo: valor × personas.</p><div id="tarifas"></div></div>
+<div class="card"><h2>Valor por jornada</h2><p class="pie" style="margin:0">Al registrar un recibido se escoge la jornada (día entero o medio día) y el monto sale solo: valor × personas.</p><div id="tarifas"></div></div>
 <div class="resumen" id="resumen-gen"></div>
 <div class="card"><h2>Soportes</h2><div class="fila2"><button type="button" class="btn sec" id="exp-csv">Descargar recibidos firmados (Excel/CSV)</button></div>
 <p class="estado-db pie" style="margin:0"></p></div>

@@ -14,14 +14,11 @@ const horaCorta = (iso) => new Date(iso).toLocaleTimeString('es-CO', { hour: 'nu
 const fechaHora = (iso) => new Date(iso).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' });
 const consecutivo = (id) => 'ECO-' + id.replace(/^\d{4}-\d{2}-/, '').slice(0, 12);
 const nuevoId = (fecha) => `${fecha}-n${Date.now().toString(36)}`;
-const personasDe = (p) => (p.es_grupo ? Math.max(p.am || 0, p.al || 0, p.pm || 0, 1) : 1);
-function comidas(p) {
-  const r = [];
-  const add = (n, s, pl) => n && r.push(`${n} ${n === 1 ? s : pl}`);
-  add(p.am, 'merienda AM', 'meriendas AM'); add(p.al, 'almuerzo', 'almuerzos'); add(p.pm, 'merienda PM', 'meriendas PM');
-  return r.length > 1 ? r.slice(0, -1).join(', ') + ' y ' + r.at(-1) : r[0] || 'alimentación';
-}
+// Alimentación por jornada: cada entrega es de día entero o de medio día (tarifa), por persona
+const personasDe = (p) => (p.es_grupo ? (p.personas || Math.max(p.am || 0, p.al || 0, p.pm || 0, 1)) : 1);
 const tarifa = (id) => D.tarifas.find((t) => t.id === id);
+const nombreJornada = (p, tar) => ((tar || tarifa(p.tarifa) || {}).nombre || 'Día entero');
+function comidas(p, tar) { return `alimentación de ${nombreJornada(p, tar).toLowerCase()}`; }
 function tarifaSugerida(p) { return tarifa(p.tarifa) ? p.tarifa : (D.tarifas[0] && D.tarifas[0].id) || ''; }
 function toast(msg) {
   const t = document.getElementById('toast'); t.textContent = msg; t.hidden = false;
@@ -29,8 +26,7 @@ function toast(msg) {
 }
 function declaracion(p, quien, doc, monto, tar) {
   const grupo = p.es_grupo ? ` como responsable del grupo ${p.nombre} (${personasDe(p)} personas),` : '';
-  const t = tar ? ` (${tar.nombre})` : '';
-  return `Yo, ${quien || '______'}, identificado(a) con documento ${doc || '______'},${grupo} declaro que recibí ${pesos(monto)} en efectivo${t} para ${comidas(p)} del evento Ecofest, en ${p.lugar}, el ${DIAS[p.fecha] || p.fecha}.`;
+  return `Yo, ${quien || '______'}, identificado(a) con documento ${doc || '______'},${grupo} declaro que recibí ${pesos(monto)} en efectivo para ${comidas(p, tar)} del evento Ecofest, en ${p.lugar}, el ${DIAS[p.fecha] || p.fecha}.`;
 }
 function sinConexion() {
   return !conectado ? 'Abra esta página en claude.ai con su sesión iniciada para guardar cambios.'
@@ -49,11 +45,11 @@ function pintarDia(fecha) {
   const tot = [0, 0, 0], firm = [0, lista.length];
   const lugares = new Map();
   for (const [id, p] of lista) {
-    tot[0] += p.am || 0; tot[1] += p.al || 0; tot[2] += p.pm || 0; if (D.actas[id]) firm[0]++;
+    if (p.tarifa === 'medio-dia') tot[1] += personasDe(p); else tot[0] += personasDe(p); if (D.actas[id]) firm[0]++;
     if (!lugares.has(p.lugar)) lugares.set(p.lugar, []);
     lugares.get(p.lugar).push([id, p]);
   }
-  document.getElementById('tot-' + fecha).innerHTML = `<span><b>${tot[0]}</b> mer. AM</span><span><b>${tot[1]}</b> almuerzos</span><span><b>${tot[2]}</b> mer. PM</span><span><b>${firm[0]}/${firm[1]}</b> recibidos</span>`;
+  document.getElementById('tot-' + fecha).innerHTML = `<span><b>${tot[0]}</b> día entero</span><span><b>${tot[1]}</b> medio día</span><span><b>${firm[0]}/${firm[1]}</b> recibidos</span>`;
   if (!lista.length) {
     cont.innerHTML = `<p class="pie">${conectado ? 'No hay personas en este día. Use “+ Agregar persona”.' : 'Cargando la planilla…'}</p>`;
     return;
@@ -64,19 +60,19 @@ function pintarDia(fecha) {
     const vis = filas.filter(([, p]) => !t || `${p.nombre} ${p.grupo || ''} ${lugar}`.toLowerCase().includes(t));
     if (!vis.length) continue;
     const s = [0, 0, 0]; let f = 0;
-    filas.forEach(([id, p]) => { s[0] += p.am || 0; s[1] += p.al || 0; s[2] += p.pm || 0; if (D.actas[id]) f++; });
+    filas.forEach(([id, p]) => { s[0] += personasDe(p); if (D.actas[id]) f++; });
     html += `<div class="ubic"><h3>${esc(lugar)}</h3><div class="tw"><table>
-      <thead><tr><th>Quién recibe</th><th class="n">AM</th><th class="n">Alm.</th><th class="n">PM</th><th class="acta">Recibido</th></tr></thead><tbody>
+      <thead><tr><th>Quién recibe</th><th class="jor">Jornada</th><th class="acta">Recibido</th></tr></thead><tbody>
       ${vis.map(([id, p]) => {
         const a = D.actas[id];
         return `<tr class="${p.es_grupo ? 'grupo' : ''}${a ? ' firmada' : ''}">
           <td><button type="button" class="nombre" data-editar="${esc(id)}"><b>${esc(p.nombre)}</b>${p.es_grupo ? `<span class="tag">grupo · ${personasDe(p)}</span>` : ''}</button>
-            <div class="sub">${esc(p.grupo || '')}${tarifa(p.tarifa) ? ` · ${esc(tarifa(p.tarifa).nombre)}` : ''}</div>
+            <div class="sub">${esc(p.grupo || '')}</div>
             ${p.obs && !a ? `<div class="nota">${esc(p.obs)}</div>` : ''}</td>
-          ${celda(p.am)}${celda(p.al)}${celda(p.pm)}
+          <td class="jor">${(() => { const j = D.actas[id] ? D.actas[id].tarifa : nombreJornada(p); return `<span class="tag${/medio/i.test(j) ? ' medio' : ''}">${esc(j)}</span>`; })()}${personasDe(p) > 1 ? `<div class="pie">× ${personasDe(p)}</div>` : ''}</td>
           <td class="acta"><button type="button" class="chk${a ? ' ok' : ''}" data-acta="${esc(id)}" aria-label="Recibido de ${esc(p.nombre)}"><span class="box"></span><span class="hora">${a ? horaCorta(a.firmado_en) : ''}</span></button></td></tr>`;
       }).join('')}</tbody>
-      <tfoot><tr><td>Total</td>${celda(s[0])}${celda(s[1])}${celda(s[2])}<td class="acta progreso">${f}/${filas.length}</td></tr></tfoot></table></div></div>`;
+      <tfoot><tr><td>Total</td><td class="jor">${s[0]} pers.</td><td class="acta progreso">${f}/${filas.length}</td></tr></tfoot></table></div></div>`;
   }
   cont.innerHTML = html || '<p class="pie">Nadie coincide con la búsqueda en este día.</p>';
 }
@@ -111,11 +107,11 @@ function pintarTarifas() {
 
 function pintarResumen() {
   const tot = [0, 0, 0]; let monto = 0, n = 0;
-  for (const p of Object.values(D.personas)) { tot[0] += p.am || 0; tot[1] += p.al || 0; tot[2] += p.pm || 0; n++; }
+  for (const p of Object.values(D.personas)) { if (p.tarifa === 'medio-dia') tot[1] += personasDe(p); else tot[0] += personasDe(p); n++; }
   for (const a of Object.values(D.actas)) monto += a.monto || 0;
   const el = document.getElementById('resumen-gen');
-  if (el) el.innerHTML = `<div><b>${tot[0]}</b><span>meriendas AM</span></div><div><b>${tot[1]}</b><span>almuerzos</span></div>
-    <div><b>${tot[2]}</b><span>meriendas PM</span></div><div><b>${Object.keys(D.actas).length}/${n}</b><span>recibidos · ${pesos(monto)} entregados</span></div>`;
+  if (el) el.innerHTML = `<div><b>${tot[0]}</b><span>personas día entero</span></div><div><b>${tot[1]}</b><span>personas medio día</span></div>
+    <div><b>${Object.keys(D.actas).length}/${n}</b><span>recibidos · ${pesos(monto)} entregados</span></div>`;
 }
 
 // ================= hoja (ventana) =================
@@ -150,7 +146,7 @@ document.addEventListener('click', (ev) => {
 
 // ---------- personas ----------
 function editarPersona(id, fechaNueva) {
-  const p = id ? D.personas[id] : { fecha: fechaNueva, lugar: '', nombre: '', grupo: 'Equipo Ecofest', es_grupo: false, am: 0, al: 1, pm: 0, obs: '', tarifa: tarifaSugerida({}) };
+  const p = id ? D.personas[id] : { fecha: fechaNueva, lugar: '', nombre: '', grupo: 'Equipo Ecofest', es_grupo: false, personas: 1, obs: '', tarifa: tarifaSugerida({}) };
   const bloqueo = sinConexion();
   const lugares = [...new Set(Object.values(D.personas).map((x) => x.lugar))].sort();
   const firmado = id && D.actas[id];
@@ -164,12 +160,10 @@ function editarPersona(id, fechaNueva) {
         <label>Lugar<input id="p-lugar" value="${esc(p.lugar)}" list="dl-lugares" required placeholder="Plaza de la Paz"></label>
       </div>
       <datalist id="dl-lugares">${lugares.map((l) => `<option value="${esc(l)}">`).join('')}</datalist>
-      <div class="tres">
-        <label>Merienda AM<input id="p-am" type="number" min="0" inputmode="numeric" value="${p.am || 0}"></label>
-        <label>Almuerzo<input id="p-al" type="number" min="0" inputmode="numeric" value="${p.al || 0}"></label>
-        <label>Merienda PM<input id="p-pm" type="number" min="0" inputmode="numeric" value="${p.pm || 0}"></label>
+      <div class="dos">
+        <label>Jornada<select id="p-tar">${D.tarifas.map((t) => `<option value="${esc(t.id)}" ${t.id === p.tarifa ? 'selected' : ''}>${esc(t.nombre)} · ${pesos(t.valor)}</option>`).join('')}</select></label>
+        <label>Personas (si es grupo)<input id="p-pers" type="number" min="1" inputmode="numeric" value="${personasDe(p)}"></label>
       </div>
-      <label>Tarifa<select id="p-tar">${D.tarifas.map((t) => `<option value="${esc(t.id)}" ${t.id === p.tarifa ? 'selected' : ''}>${esc(t.nombre)} · ${pesos(t.valor)}</option>`).join('')}<option value="" ${!tarifa(p.tarifa) ? 'selected' : ''}>Sin tarifa (monto manual)</option></select></label>
       <label>Observación<input id="p-obs" value="${esc(p.obs || '')}"></label>
       <p class="msg" id="p-msg" hidden></p>
       <button class="btn" id="p-ok" ${bloqueo ? 'disabled' : ''}>Guardar</button>
@@ -181,11 +175,10 @@ function editarPersona(id, fechaNueva) {
       const datos = {
         ...p, nombre: document.getElementById('p-nombre').value.trim(), es_grupo: document.getElementById('p-grupo').checked,
         grupo: document.getElementById('p-ent').value.trim(), lugar: document.getElementById('p-lugar').value.trim(),
-        am: entero(document.getElementById('p-am').value), al: entero(document.getElementById('p-al').value), pm: entero(document.getElementById('p-pm').value),
+        personas: document.getElementById('p-grupo').checked ? (entero(document.getElementById('p-pers').value) || 1) : 1,
         tarifa: document.getElementById('p-tar').value, obs: document.getElementById('p-obs').value.trim(),
       };
       if (!datos.nombre || !datos.lugar) { msg.textContent = 'Escriba el nombre y el lugar.'; msg.hidden = false; return; }
-      if (!datos.am && !datos.al && !datos.pm) { msg.textContent = 'Marque al menos una comida.'; msg.hidden = false; return; }
       const nid = id || nuevoId(datos.fecha);
       if (await guardar(db.collection('personas').doc(nid), datos, document.getElementById('p-ok'), msg)) {
         D.personas[nid] = datos; pintarTodo(); cerrar(); toast(id ? 'Cambios guardados' : `${datos.nombre} agregado(a)`);
@@ -213,16 +206,15 @@ function nuevoRecibido(id) {
   const tarIni = tarifaSugerida(p);
   abrir(`${cab(`${DIAS[p.fecha]} · ${p.lugar}`, 'Entrega de alimentación')}
     <div class="resumen-acta"><b style="font-size:18px">${esc(p.nombre)}${p.es_grupo ? ` · grupo de ${cant}` : ''}</b>
-      <span class="pie">${esc(p.grupo || '')}</span><span>${esc(comidas(p))}</span></div>
+      <span class="pie">${esc(p.grupo || '')}${p.lugar ? ' · ' + esc(p.lugar) : ''}</span></div>
     <form id="f-r" style="display:grid;gap:12px" novalidate>
       ${p.es_grupo ? '<label>Nombre de quien recibe por el grupo<input id="r-quien" autocomplete="off" required></label>' : ''}
       <div class="dos">
         <label>Cédula<input id="r-doc" inputmode="numeric" autocomplete="off" required></label>
         <label>Celular (opcional)<input id="r-tel" type="tel" autocomplete="off"></label>
       </div>
-      <fieldset class="opciones"><legend>Tipo de entrega</legend>
+      <fieldset class="opciones"><legend>Jornada</legend>
         ${D.tarifas.map((t) => `<label class="opcion"><input type="radio" name="r-tar" value="${esc(t.id)}" ${t.id === tarIni ? 'checked' : ''}><span>${esc(t.nombre)}</span><b>${pesos(t.valor)}</b></label>`).join('')}
-        <label class="opcion"><input type="radio" name="r-tar" value="" ${!tarIni ? 'checked' : ''}><span>Otro valor</span><b></b></label>
       </fieldset>
       <label>Monto entregado${p.es_grupo ? ` (${cant} personas)` : ''}<input id="r-monto" inputmode="numeric" required></label>
       <label class="decl"><input type="checkbox" id="r-acepto"><span id="r-texto"></span></label>
@@ -254,8 +246,8 @@ function nuevoRecibido(id) {
       msg.hidden = true;
       const acta = {
         entrega: id, fecha: p.fecha, lugar: p.lugar, beneficiario: p.nombre, grupo: p.grupo || '', es_grupo: !!p.es_grupo, personas: cant,
-        comidas: comidas(p), merienda_am: p.am || 0, almuerzo: p.al || 0, merienda_pm: p.pm || 0,
-        tarifa: t ? t.nombre : 'Otro valor', valor_unitario: t ? t.valor : null, recibe: quien(), documento: doc,
+        comidas: comidas(p, t), merienda_am: p.am || 0, almuerzo: p.al || 0, merienda_pm: p.pm || 0,
+        tarifa: t ? t.nombre : 'Día entero', valor_unitario: t ? t.valor : null, recibe: quien(), documento: doc,
         telefono: document.getElementById('r-tel').value.trim(), monto: m, declaracion: declaracion(p, quien(), doc, m, t),
         firma: firma.imagen(), firmado_en: new Date().toISOString(), registrado_por: usuario ? await usuario.id().catch(() => null) : null,
       };
@@ -274,7 +266,7 @@ function verRecibido(id) {
       ${a.es_grupo ? `<span>Por el grupo ${esc(a.beneficiario)} (${a.personas || ''} personas)</span>` : `<span class="pie">${esc(a.grupo || '')}</span>`}
       <span>CC ${esc(a.documento)}${a.telefono ? ' · ' + esc(a.telefono) : ''}</span>
       <span style="font-size:24px;font-weight:800">${pesos(a.monto)}</span>
-      <span>${esc(a.tarifa || '')} · ${esc(a.comidas)}</span>
+      <span>${esc(a.tarifa || '')}${a.personas > 1 ? ' · ' + a.personas + ' personas' : ''}</span>
       <span class="pie" id="v-firmado">Firmado: ${esc(fechaHora(a.firmado_en))}</span>
     </div>
     <p style="margin:0;font-size:14px">${esc(a.declaracion)}</p>
@@ -365,7 +357,7 @@ function editarRuta(id) {
 
 // ---------- tarifas ----------
 function editarTarifas() {
-  const fila = (t) => `<div class="fila-tarifa"><input class="tf-nombre" value="${esc(t.nombre)}" placeholder="Nombre (Completo, Medio día…)" aria-label="Nombre de la tarifa">
+  const fila = (t) => `<div class="fila-tarifa"><input class="tf-nombre" value="${esc(t.nombre)}" placeholder="Nombre (Día entero, Medio día…)" aria-label="Nombre de la tarifa">
     <input class="tf-valor" inputmode="numeric" value="${t.valor || ''}" placeholder="$" aria-label="Valor"><input type="hidden" class="tf-id" value="${esc(t.id || '')}">
     <button type="button" class="cerrar tf-quitar" aria-label="Quitar tarifa">×</button></div>`;
   abrir(`${cab('Valores de la entrega', 'Tarifas')}
@@ -609,7 +601,7 @@ async function descargarSoporte(id) {
   x.textAlign = 'left';
   const filas = [['Recibió', a.recibe], ...(a.es_grupo ? [['Grupo', `${a.beneficiario} (${a.personas} personas)`]] : a.grupo ? [['Grupo', a.grupo]] : []),
     ['Cédula', a.documento], ...(a.telefono ? [['Celular', a.telefono]] : []), ['Lugar', a.lugar], ['Fecha del evento', DIAS[a.fecha] || a.fecha],
-    ['Comidas', a.comidas], ['Tipo de entrega', a.tarifa || ''], ['Valor entregado', pesos(a.monto)], ['Firmado', fechaHora(a.firmado_en)]];
+    ['Jornada', `${a.tarifa || ''}${a.personas > 1 ? ' · ' + a.personas + ' personas' : ''}`], ['Valor entregado', pesos(a.monto)], ['Firmado', fechaHora(a.firmado_en)]];
   let y = 240;
   for (const [k, v] of filas) {
     x.font = '24px system-ui, sans-serif'; x.fillStyle = '#5B6A61'; x.fillText(k, 40, y);
@@ -636,7 +628,7 @@ document.getElementById('exp-csv').onclick = async () => {
   if (!descargas) return toast('Esta vista no permite descargar archivos.');
   const cols = [['entrega', 'Recibido'], ['fecha', 'Fecha'], ['lugar', 'Lugar'], ['beneficiario', 'Persona o grupo'], ['grupo', 'Grupo'], ['personas', 'Personas'],
     ['recibe', 'Recibió'], ['documento', 'Cédula'], ['telefono', 'Celular'], ['merienda_am', 'Merienda AM'], ['almuerzo', 'Almuerzo'], ['merienda_pm', 'Merienda PM'],
-    ['tarifa', 'Tipo de entrega'], ['monto', 'Monto'], ['firmado_en', 'Firmado']];
+    ['tarifa', 'Jornada'], ['monto', 'Monto'], ['firmado_en', 'Firmado']];
   const celda = (v) => { const s = String(v ?? ''); return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
   const filas = lista.map((a) => cols.map(([k]) => celda(k === 'entrega' ? consecutivo(a.entrega) : k === 'firmado_en' ? fechaHora(a[k]) : a[k])).join(';'));
   try { await descargas.save({ filename: 'recibidos_ecofest.csv', data: '﻿' + [cols.map((c) => c[1]).join(';'), ...filas].join('\r\n') }); }
