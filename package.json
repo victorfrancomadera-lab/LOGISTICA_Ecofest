@@ -17,7 +17,8 @@
   },
   "homepage": "https://github.com/victorfrancomadera-lab/LOGISTICA_Ecofest#readme",
   "dependencies": {
-    "express": "^4.22.3"
+    "express": "^4.22.3",
+    "zxing-wasm": "^3.1.6"
   },
   "engines": {
     "node": ">=22.13"

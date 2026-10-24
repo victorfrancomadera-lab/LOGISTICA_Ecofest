@@ -109,6 +109,7 @@ for (const [col, tipo] of [['ubicacion', 'TEXT'], ['grupo', 'TEXT'], ['es_grupo'
 }
 
 if (!db.prepare('PRAGMA table_info(usuarios)').all().some((c) => c.name === 'telefono')) db.exec('ALTER TABLE usuarios ADD COLUMN telefono TEXT');
+if (!db.prepare('PRAGMA table_info(vehiculos)').all().some((c) => c.name === 'conductor_licencia')) db.exec('ALTER TABLE vehiculos ADD COLUMN conductor_licencia TEXT');
 
 // Caja menor: salidas de efectivo que no son las entregas de alimentación planeadas (transporte propio, compras, etc.)
 db.exec(`CREATE TABLE IF NOT EXISTS gastos (
@@ -292,7 +293,7 @@ api.put('/usuarios/:id', soloAdmin, (req, res) => {
 });
 
 // --- vehículos ---
-const CAMPOS_VEH = ['placa', 'descripcion', 'color', 'capacidad', 'conductor', 'conductor_tel', 'conductor_doc', 'notas'];
+const CAMPOS_VEH = ['placa', 'descripcion', 'color', 'capacidad', 'conductor', 'conductor_tel', 'conductor_doc', 'conductor_licencia', 'notas'];
 function datosVehiculo(b) {
   return CAMPOS_VEH.map((k) => (k === 'capacidad' ? (b[k] ? Number(b[k]) : null) : k === 'placa' ? (txt(b[k]) || '').toUpperCase() : txt(b[k])));
 }
@@ -717,10 +718,14 @@ app.get('/healthz', (req, res) => res.json({ ok: true, version: VERSION, datos_p
 // Sin caché: cada vez que se abre la app, el celular revisa si hay versión nueva
 const sinCache = (res) => res.setHeader('Cache-Control', 'no-cache');
 const INDEX = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8')
-  .replace('/styles.css"', `/styles.css?v=${VERSION}"`).replace('/app.js"', `/app.js?v=${VERSION}"`);
+  .replace('/styles.css"', `/styles.css?v=${VERSION}"`).replace('/app.js"', `/app.js?v=${VERSION}"`).replace('/escaner.js"', `/escaner.js?v=${VERSION}"`);
 const enviarIndex = (req, res) => { res.setHeader('Cache-Control', 'no-store'); res.type('html').send(INDEX); };
 app.get(['/', '/index.html'], enviarIndex);
 app.use(express.static(path.join(__dirname, 'public'), { setHeaders: sinCache, index: false }));
+// Lector de códigos de barras (cédula y licencia), servido desde el propio servidor
+const ZXING = path.join(__dirname, 'node_modules', 'zxing-wasm', 'dist');
+app.get('/vendor/zxing/reader.js', (req, res) => res.sendFile(path.join(ZXING, 'iife', 'reader', 'index.js'), { maxAge: '7d' }));
+app.get('/vendor/zxing/zxing_reader.wasm', (req, res) => res.sendFile(path.join(ZXING, 'reader', 'zxing_reader.wasm'), { maxAge: '7d' }));
 app.get('*', enviarIndex);
 
 app.listen(PORT, () => console.log(`Ecofest logística en puerto ${PORT} · datos en ${DB_FILE}`));

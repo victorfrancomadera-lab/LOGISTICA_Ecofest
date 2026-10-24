@@ -8,6 +8,12 @@ App web para el equipo en calle:
 1. **Traslados**: vehículo (placa), conductor, a quién se recoge, hora y lugar de recogida, destino, a qué hora y dónde se recoge de nuevo, equipos o carga y notas. El estado se actualiza desde el celular (en camino, recogido, entregado, regreso…) y queda en una bitácora con quién lo hizo y a qué hora.
 2. **Almuerzos**: entrega de dinero con **firma digital en el celular o la tablet**, cédula, monto, fecha y hora, ubicación GPS y quién entregó. Cada entrega genera un comprobante `ECO-0001` que se puede imprimir o guardar en PDF.
 
+**Escanear cédula o licencia**: en los formularios con cédula (firma de alimentación, caja menor, nueva entrega y conductor del vehículo) el botón **📷 Escanear cédula o licencia** abre la cámara y lee el código de barras del reverso. Antes de llenar el formulario muestra los datos para confirmarlos o corregirlos. Si la cámara en vivo no funciona, **Tomar foto** lee el código desde una foto.
+
+- Cédula amarilla con hologramas (PDF417): número, nombres, apellidos, sexo, nacimiento y RH.
+- Licencia de conducción y cédula digital: se extrae lo que el código traiga legible (número, nombre, categorías, vigencia) y siempre se pide revisar.
+- El lector (`zxing-wasm`) se sirve desde la propia app en `/vendor/zxing`; no depende de un CDN. Requiere HTTPS (Railway ya lo da).
+
 Los dos módulos se exportan a Excel (CSV) desde **Más**.
 
 ## Desplegar en Railway (5 minutos)

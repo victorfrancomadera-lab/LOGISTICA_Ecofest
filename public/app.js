@@ -535,7 +535,9 @@ async function vistaFormEntrega(id) {
       <label>Observación</label><textarea name="observacion">${v('observacion')}</textarea>
       <p><button class="btn primario bloque grande">${id ? 'Guardar' : 'Guardar y firmar'}</button></p>
     </form>`);
-  document.getElementById('f-en').onsubmit = async (ev) => {
+  const fEn = document.getElementById('f-en');
+  botonEscanear(fEn.documento, (d) => { if (d.nombreCompleto && !fEn.beneficiario.value) fEn.beneficiario.value = d.nombreCompleto; });
+  fEn.onsubmit = async (ev) => {
     ev.preventDefault();
     try {
       const datos = formDatos(ev.target);
@@ -600,6 +602,7 @@ function vistaFirmar(e) {
   // al cambiar la jornada, el monto se recalcula: valor × personas
   form.querySelectorAll('input[name=jornada]').forEach((r) => (r.onchange = () => { form.monto.value = valorJornada(r.value) * (e.personas || 1) || ''; decl(); }));
   form.oninput = decl; decl();
+  botonEscanear(form.documento, (d) => { if (e.es_grupo && d.nombreCompleto) form.recibido_por.value = d.nombreCompleto; });
 
   const firma = lienzoFirma(document.getElementById('lienzo'));
   document.getElementById('limpiar').onclick = firma.limpiar;
@@ -793,6 +796,7 @@ async function vistaFormGasto() {
     document.getElementById('texto-decl').textContent = `Yo, ${form.beneficiario.value || '______'}, identificado(a) con documento ${form.documento.value || '______'}, declaro que recibí ${pesos(m)} (${form.medio.value.toLowerCase()}) para: ${form.concepto.value || '______'}, del evento ${estado.ajustes.evento || 'Ecofest'}.`;
   };
   form.oninput = decl; form.onchange = decl; decl();
+  botonEscanear(form.documento, (d) => { if (d.nombreCompleto) form.beneficiario.value = d.nombreCompleto; });
   const firma = lienzoFirma(document.getElementById('lienzo'));
   document.getElementById('limpiar').onclick = firma.limpiar;
   let soporte = null;
@@ -901,7 +905,7 @@ async function vistaVehiculos() {
     ${lista.length ? lista.map((v) => `<div class="tarjeta">
       <div class="fila entre"><span class="titulo" style="font-size:20px">${h(v.placa)}</span>${esAdmin() ? `<a class="btn chico" href="#/vehiculos/${v.id}">Editar</a>` : ''}</div>
       <div class="suave">${h([v.descripcion, v.color, v.capacidad ? v.capacidad + ' puestos' : ''].filter(Boolean).join(' · '))}</div>
-      <div style="margin-top:6px">👤 ${h(v.conductor || 'Sin conductor')} ${v.conductor_doc ? '· CC ' + h(v.conductor_doc) : ''}</div>
+      <div style="margin-top:6px">👤 ${h(v.conductor || 'Sin conductor')} ${v.conductor_doc ? '· CC ' + h(v.conductor_doc) : ''}${v.conductor_licencia ? ' · 🪪 ' + h(v.conductor_licencia) : ''}</div>
       ${v.conductor_tel ? `<div class="fila" style="margin-top:8px"><a class="btn chico" href="tel:${h(telLimpio(v.conductor_tel))}">📞 ${h(v.conductor_tel)}</a>
         <a class="btn chico" href="${waLink(v.conductor_tel)}" target="_blank" rel="noopener">💬 WhatsApp</a></div>` : ''}
       ${v.notas ? `<div class="suave pequeno" style="margin-top:6px">${h(v.notas)}</div>` : ''}
@@ -929,11 +933,18 @@ async function vistaFormVehiculo(id) {
         <div><label>Celular conductor</label><input name="conductor_tel" type="tel" value="${c('conductor_tel')}"></div>
         <div><label>Cédula conductor</label><input name="conductor_doc" inputmode="numeric" value="${c('conductor_doc')}"></div>
       </div>
+      <label>Licencia (categorías y vigencia)</label><input name="conductor_licencia" value="${c('conductor_licencia')}" placeholder="Ej. C1 · vence 2029-03-15">
       <label>Notas</label><textarea name="notas">${c('notas')}</textarea>
       <p><button class="btn primario bloque grande">Guardar</button></p>
       ${id ? '<p><button type="button" class="btn peligro bloque" id="borrar">Retirar vehículo</button></p>' : ''}
     </form>`);
-  document.getElementById('f-veh').onsubmit = async (ev) => {
+  const fVeh = document.getElementById('f-veh');
+  botonEscanear(fVeh.conductor_doc, (d) => {
+    if (d.nombreCompleto) fVeh.conductor.value = d.nombreCompleto;
+    const lic = [d.categorias, d.vence && 'vence ' + d.vence].filter(Boolean).join(' · ');
+    if (lic) fVeh.conductor_licencia.value = lic;
+  });
+  fVeh.onsubmit = async (ev) => {
     ev.preventDefault();
     try {
       const datos = formDatos(ev.target);
