@@ -76,11 +76,41 @@ function leerGenerico(texto) {
   return datos;
 }
 
+// Licencia de conducción (RUNT): número de documento con ceros a la izquierda, categorías, apellidos y nombres,
+// y después la foto del titular (JPEG). Ej.: 0001140861508B1 A2 C FRANCO MADERA VICTOR 2ÿØÿà…JFIF…
+function sinFoto(texto) {
+  const i = texto.search(/\xff\xd8|\u00c3\u00bf\u00c3\u0098|ÿØ|JFIF/);
+  return i < 0 ? texto : texto.slice(0, Math.max(0, texto.lastIndexOf('JFIF', i) === i ? i - 6 : i));
+}
+function leerLicencia(texto) {
+  const cabeza = limpiarCampo(sinFoto(texto)).toUpperCase();
+  const m = /^0*(\d{6,12})\s*((?:[ABC][1-3]\s*)+)(.*)$/.exec(cabeza);
+  if (!m) return null;
+  const palabras = m[3].match(/[A-ZÁÉÍÓÚÑÜ]{2,}/g) || [];
+  if (!palabras.length) return null;
+  // Primero vienen los dos apellidos y luego los nombres
+  const ap = palabras.length > 2 ? palabras.slice(0, 2) : palabras.slice(0, 1);
+  const no = palabras.slice(ap.length);
+  const fechas = [...cabeza.matchAll(/(?<!\d)(\d{4})[-/]?(\d{2})[-/]?(\d{2})(?!\d)/g)].map((f) => fechaValida(f[1] + f[2] + f[3])).filter(Boolean);
+  return {
+    tipo: 'Licencia de conducción',
+    documento: m[1],
+    apellidos: titulo(ap.join(' ')),
+    nombres: titulo(no.join(' ')),
+    categorias: [...new Set(m[2].match(/[ABC][1-3]/g))].join(', '),
+    vence: fechas.sort().at(-1) || '',
+    cabeza,
+  };
+}
+
 function interpretar(resultado) {
   const raw = resultado.bytes && resultado.bytes.length ? latin1(resultado.bytes) : resultado.text;
-  const d = leerCedulaAmarilla(raw) || leerGenerico(raw);
+  // La licencia viene en UTF-8 (Ñ y tildes); la cédula amarilla es binaria y se lee byte a byte
+  const utf8 = resultado.bytes && resultado.bytes.length ? new TextDecoder('utf-8').decode(resultado.bytes) : resultado.text;
+  const d = leerCedulaAmarilla(raw) || leerLicencia(utf8) || leerGenerico(sinFoto(utf8));
   d.formato = resultado.format;
-  d.crudo = limpiarCampo(raw.replace(/\x00+/g, ' | '));
+  d.crudo = d.cabeza || limpiarCampo(sinFoto(raw).replace(/\x00+/g, ' | '));
+  delete d.cabeza;
   if (!d.nombreCompleto && (d.nombres || d.apellidos)) d.nombreCompleto = [d.nombres, d.apellidos].filter(Boolean).join(' ');
   return d;
 }
@@ -132,8 +162,9 @@ function escanearDocumento() {
           <div class="chip">${h(d.tipo)}</div>
           <label>Número de documento</label><input id="esc-doc" inputmode="numeric" value="${h(d.documento || '')}">
           <label>Nombre completo</label><input id="esc-nom" value="${h(d.nombreCompleto || '')}">
+          ${d.tipo === 'Licencia de conducción' ? '<p class="suave pequeno">Revise que el número coincida con el de la licencia física.</p>' : ''}
           <table class="datos">${fila('sexo', 'Sexo')}${fila('nacimiento', 'Nacimiento')}${fila('rh', 'RH')}${fila('categorias', 'Categorías')}${fila('vence', 'Vence')}</table>
-          ${d.tipo === 'Cédula de ciudadanía' ? '' : '<p class="obs pequeno">Revise los datos contra el documento físico: este formato no trae los campos en posiciones fijas.</p>'}
+          ${d.tipo === 'Cédula de ciudadanía' || d.apellidos ? '' : '<p class="obs pequeno">Revise los datos contra el documento físico: este formato no trae los campos en posiciones fijas.</p>'}
           <details class="pequeno"><summary>Ver texto del código</summary><code class="crudo">${h(d.crudo)}</code></details>
           <p><button type="button" class="btn primario bloque grande" data-a="usar">Usar estos datos</button></p>
           <p><button type="button" class="btn bloque" data-a="otra">Escanear otra vez</button></p>
