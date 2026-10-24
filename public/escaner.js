@@ -115,6 +115,41 @@ function interpretar(resultado) {
   return d;
 }
 
+// ---------- foto del frente (la lee Claude en el servidor) ----------
+function achicarFoto(archivo, lado = 1600) {
+  return new Promise((ok, falla) => {
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, lado / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(img.src);
+      ok(c.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => falla(new Error('No se pudo abrir la foto'));
+    img.src = URL.createObjectURL(archivo);
+  });
+}
+async function leerFrente(archivo) {
+  const r = await api('/leer-documento', { method: 'POST', body: { imagen: await achicarFoto(archivo) } });
+  return {
+    tipo: r.tipo, documento: r.numero, nombres: titulo(r.nombres || ''), apellidos: titulo(r.apellidos || ''),
+    sexo: r.sexo, nacimiento: r.nacimiento, rh: r.rh, expedicion: r.expedicion, vence: r.vence,
+    categorias: r.categorias, organismo: r.organismo, delFrente: true,
+  };
+}
+// Une lo del código de barras con lo del frente: el frente trae el nombre completo y las fechas
+function unir(codigo, frente) {
+  const d = { ...codigo };
+  for (const [k, v] of Object.entries(frente)) if (v && (!d[k] || ['nombres', 'apellidos', 'tipo'].includes(k))) d[k] = v;
+  d.nombreCompleto = [d.nombres, d.apellidos].filter(Boolean).join(' ');
+  if (codigo.documento && frente.documento && codigo.documento !== frente.documento) {
+    d.aviso = `El número del código (${codigo.documento}) no coincide con el del frente (${frente.documento}). Verifique en el documento.`;
+  }
+  return d;
+}
+
 // ---------- pantalla del escáner ----------
 // escanearDocumento() abre la cámara y devuelve { documento, nombreCompleto, ... } ya confirmado, o null si se cancela.
 function escanearDocumento() {
@@ -127,8 +162,10 @@ function escanearDocumento() {
       <p class="esc-ayuda">Ponga el <b>reverso</b> de la cédula o de la licencia frente a la cámara, con el código de barras (el rectángulo de rayas) dentro del marco. Acerque hasta que se vea nítido.</p>
       <div class="esc-botones">
         <button type="button" class="btn chico" data-a="linterna" hidden>🔦 Linterna</button>
-        <label class="btn chico">📸 Tomar foto<input type="file" accept="image/*" capture="environment" hidden></label>
+        <label class="btn chico">📸 Foto del código<input type="file" accept="image/*" capture="environment" hidden data-a="foto-codigo"></label>
+        <label class="btn chico">🪪 Foto del frente<input type="file" accept="image/*" capture="environment" hidden data-a="foto-frente"></label>
       </div>
+      <p class="suave pequeno">La cédula amarilla trae todo en el código. La licencia solo trae número, categorías y parte del nombre: para el nombre completo, fechas y RH use <b>Foto del frente</b>.</p>
       <p class="esc-estado suave pequeno">Preparando cámara…</p>`;
     document.body.appendChild(capa);
     const video = capa.querySelector('video');
@@ -163,13 +200,22 @@ function escanearDocumento() {
           <label>Número de documento</label><input id="esc-doc" inputmode="numeric" value="${h(d.documento || '')}">
           <label>Nombre completo</label><input id="esc-nom" value="${h(d.nombreCompleto || '')}">
           ${d.tipo === 'Licencia de conducción' ? '<p class="suave pequeno">Revise que el número coincida con el de la licencia física.</p>' : ''}
-          <table class="datos">${fila('sexo', 'Sexo')}${fila('nacimiento', 'Nacimiento')}${fila('rh', 'RH')}${fila('categorias', 'Categorías')}${fila('vence', 'Vence')}</table>
-          ${d.tipo === 'Cédula de ciudadanía' || d.apellidos ? '' : '<p class="obs pequeno">Revise los datos contra el documento físico: este formato no trae los campos en posiciones fijas.</p>'}
-          <details class="pequeno"><summary>Ver texto del código</summary><code class="crudo">${h(d.crudo)}</code></details>
+          <table class="datos">${fila('sexo', 'Sexo')}${fila('nacimiento', 'Nacimiento')}${fila('rh', 'RH')}${fila('expedicion', 'Expedición')}${fila('categorias', 'Categorías')}${fila('vence', 'Vence')}${fila('organismo', 'Expedida por')}</table>
+          ${d.aviso ? `<p class="obs pequeno">⚠️ ${h(d.aviso)}</p>` : ''}
+          ${d.delFrente ? '' : `<label class="btn bloque" style="margin-top:10px">🪪 Completar con foto del frente<input type="file" accept="image/*" capture="environment" hidden id="esc-frente"></label>
+          <p class="suave pequeno" id="esc-frente-txt"></p>`}
+          ${d.tipo === 'Cédula de ciudadanía' || d.apellidos || d.delFrente ? '' : '<p class="obs pequeno">Revise los datos contra el documento físico: este formato no trae los campos en posiciones fijas.</p>'}
+          ${d.crudo ? `<details class="pequeno"><summary>Ver texto del código</summary><code class="crudo">${h(d.crudo)}</code></details>` : ''}
           <p><button type="button" class="btn primario bloque grande" data-a="usar">Usar estos datos</button></p>
           <p><button type="button" class="btn bloque" data-a="otra">Escanear otra vez</button></p>
         </div>`;
       capa.querySelector('[data-a=cerrar]').onclick = () => terminar(null);
+      const fr = capa.querySelector('#esc-frente');
+      if (fr) fr.onchange = async (ev) => {
+        const f = ev.target.files[0]; if (!f) return;
+        const txt = capa.querySelector('#esc-frente-txt'); txt.textContent = 'Leyendo el frente…';
+        try { confirmar(unir(d, await leerFrente(f))); } catch (e) { txt.textContent = e.message; }
+      };
       capa.querySelector('[data-a=otra]').onclick = () => { capa.remove(); escanearDocumento().then(resolver); };
       capa.querySelector('[data-a=usar]').onclick = () => {
         d.documento = capa.querySelector('#esc-doc').value.replace(/\D/g, '');
@@ -178,7 +224,17 @@ function escanearDocumento() {
       };
     }
 
-    capa.querySelector('input[type=file]').onchange = async (ev) => {
+    capa.querySelector('[data-a=foto-frente]').onchange = async (ev) => {
+      const f = ev.target.files[0]; if (!f) return;
+      estadoTxt.textContent = 'Leyendo el frente del documento…';
+      try {
+        const d = await leerFrente(f);
+        activo = false;
+        if (flujo) flujo.getTracks().forEach((t) => t.stop());
+        confirmar(unir({}, d));
+      } catch (e) { estadoTxt.textContent = e.message; }
+    };
+    capa.querySelector('[data-a=foto-codigo]').onchange = async (ev) => {
       const f = ev.target.files[0]; if (!f) return;
       estadoTxt.textContent = 'Leyendo la foto…';
       try {

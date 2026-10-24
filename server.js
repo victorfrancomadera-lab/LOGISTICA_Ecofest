@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const express = require('express');
+const Anthropic = require('@anthropic-ai/sdk');
 const { DatabaseSync } = require('node:sqlite');
 
 const PORT = process.env.PORT || 3000;
@@ -297,6 +298,57 @@ const CAMPOS_VEH = ['placa', 'descripcion', 'color', 'capacidad', 'conductor', '
 function datosVehiculo(b) {
   return CAMPOS_VEH.map((k) => (k === 'capacidad' ? (b[k] ? Number(b[k]) : null) : k === 'placa' ? (txt(b[k]) || '').toUpperCase() : txt(b[k])));
 }
+// --- lectura del frente de cédula o licencia con Claude (la foto no se guarda) ---
+const claude = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
+const ESQUEMA_DOCUMENTO = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['legible', 'tipo', 'numero', 'nombres', 'apellidos', 'sexo', 'nacimiento', 'rh', 'expedicion', 'vence', 'categorias', 'organismo'],
+  properties: {
+    legible: { type: 'boolean', description: 'false si la foto no es un documento de identidad o no se puede leer' },
+    tipo: { type: 'string', enum: ['Cédula de ciudadanía', 'Licencia de conducción', 'Tarjeta de identidad', 'Cédula de extranjería', 'Pasaporte', 'Otro'] },
+    numero: { type: 'string', description: 'Solo dígitos, sin puntos' },
+    nombres: { type: 'string' },
+    apellidos: { type: 'string' },
+    sexo: { type: 'string', description: 'M, F o vacío' },
+    nacimiento: { type: 'string', description: 'AAAA-MM-DD o vacío' },
+    rh: { type: 'string', description: 'Ej. O+ o vacío' },
+    expedicion: { type: 'string', description: 'AAAA-MM-DD o vacío' },
+    vence: { type: 'string', description: 'AAAA-MM-DD o vacío' },
+    categorias: { type: 'string', description: 'Categorías de la licencia separadas por coma, ej. B1, C1; vacío si no aparecen' },
+    organismo: { type: 'string', description: 'Organismo de tránsito o lugar de expedición, o vacío' },
+  },
+};
+api.post('/leer-documento', async (req, res) => {
+  if (!claude) return res.status(503).json({ error: 'Falta configurar ANTHROPIC_API_KEY en Railway para leer fotos.' });
+  const m = /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/.exec(String(req.body.imagen || ''));
+  if (!m) return res.status(400).json({ error: 'Foto no válida' });
+  try {
+    const r = await claude.beta.messages.create({
+      model: 'claude-opus-5-5',
+      max_tokens: 4000,
+      betas: ['server-side-fallback-2026-07-01'],
+      fallbacks: 'default',
+      output_config: { effort: 'low', format: { type: 'json_schema', schema: ESQUEMA_DOCUMENTO } },
+      messages: [{ role: 'user', content: [
+        { type: 'image', source: { type: 'base64', media_type: m[1], data: m[2] } },
+        { type: 'text', text: 'Es la foto de un documento colombiano (cédula o licencia de conducción) tomada con el celular. '
+          + 'Transcribe los datos tal como aparecen impresos, con tildes y Ñ. Fechas en formato AAAA-MM-DD (en el documento vienen DD-MM-AAAA). '
+          + 'No inventes: si un dato no aparece o no se lee con seguridad, déjalo vacío.' },
+      ] }],
+    });
+    if (r.stop_reason === 'refusal') return res.status(422).json({ error: 'No se pudo leer esta foto. Escriba los datos a mano.' });
+    const texto = r.content.find((b) => b.type === 'text');
+    const d = JSON.parse(texto ? texto.text : '{}');
+    if (!d.legible) return res.status(422).json({ error: 'No se reconoce un documento en la foto. Tómela de frente, con buena luz y sin reflejos.' });
+    d.numero = String(d.numero || '').replace(/\D/g, '');
+    res.json(d);
+  } catch (e) {
+    console.error('leer-documento:', e.status || '', e.message);
+    res.status(502).json({ error: e instanceof Anthropic.RateLimitError ? 'Demasiadas lecturas seguidas; intente en un minuto.' : 'No se pudo leer la foto. Intente de nuevo.' });
+  }
+});
+
 api.get('/vehiculos', (req, res) => {
   res.json(db.prepare('SELECT * FROM vehiculos WHERE activo = 1 ORDER BY placa').all());
 });
@@ -714,7 +766,7 @@ cargarSemilla();
 app.use('/api', api);
 // Versión desplegada (Railway define RAILWAY_GIT_COMMIT_SHA); sirve para saber qué versión tiene abierta cada celular
 const VERSION = (process.env.RAILWAY_GIT_COMMIT_SHA || '').slice(0, 7) || 'local';
-app.get('/healthz', (req, res) => res.json({ ok: true, version: VERSION, datos_persistentes: PERSISTENTE, carpeta_datos: DATA_DIR }));
+app.get('/healthz', (req, res) => res.json({ ok: true, version: VERSION, datos_persistentes: PERSISTENTE, carpeta_datos: DATA_DIR, lectura_fotos: !!claude }));
 // Sin caché: cada vez que se abre la app, el celular revisa si hay versión nueva
 const sinCache = (res) => res.setHeader('Cache-Control', 'no-cache');
 const INDEX = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8')

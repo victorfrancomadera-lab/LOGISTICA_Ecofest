@@ -941,7 +941,7 @@ async function vistaFormVehiculo(id) {
   const fVeh = document.getElementById('f-veh');
   botonEscanear(fVeh.conductor_doc, (d) => {
     if (d.nombreCompleto) fVeh.conductor.value = d.nombreCompleto;
-    const lic = [d.categorias, d.vence && 'vence ' + d.vence].filter(Boolean).join(' · ');
+    const lic = [d.categorias, d.vence && 'vence ' + d.vence, d.expedicion && 'expedida ' + d.expedicion].filter(Boolean).join(' · ');
     if (lic) fVeh.conductor_licencia.value = lic;
   });
   fVeh.onsubmit = async (ev) => {
