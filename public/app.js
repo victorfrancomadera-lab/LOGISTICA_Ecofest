@@ -964,6 +964,8 @@ async function vistaFormVehiculo(id) {
     if (d.servicio) fVeh.servicio.value = t(d.servicio);
     const desc = [d.clase, d.marca].filter(Boolean).map(t).join(' ');
     if (desc && !fVeh.descripcion.value) fVeh.descripcion.value = desc;
+    if (d.propietario && !fVeh.propietario.value) fVeh.propietario.value = /\b(S\.?A\.?S|LTDA|S\.?A)\b/.test(d.propietario) ? d.propietario : t(d.propietario);
+    if (d.propietario_doc && !fVeh.propietario_doc.value) fVeh.propietario_doc.value = d.propietario_doc.replace(/\D/g, '');
     if (d.aNotas && d.campos.length) {
       const lista = 'Código de la tarjeta:\n' + d.campos.map((c, i) => `${c.etiqueta || 'Dato ' + (i + 1)}: ${c.valor}`).join('\n');
       fVeh.notas.value = [fVeh.notas.value.replace(/Código de la tarjeta:[\s\S]*$/, '').trim(), lista].filter(Boolean).join('\n');

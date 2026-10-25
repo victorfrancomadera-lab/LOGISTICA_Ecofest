@@ -131,6 +131,8 @@ function etiquetarCampo(v) {
   if (/^(19[5-9]\d|20[0-4]\d)$/.test(v)) return 'Modelo (año)';
   if (fechaValida(v.replace(/[-/]/g, '')) || /^\d{2}[-/]\d{2}[-/]\d{4}$/.test(v)) return 'Fecha';
   for (const [etiqueta, re] of Object.entries(VOCES_TARJETA)) if (re.test(v)) return etiqueta;
+  // Nombre de persona o empresa: dos o más palabras solo con letras (S.A.S., LTDA incluidos)
+  if (v.length >= 8 && /^[A-ZÁÉÍÓÚÑÜ.&]+( [A-ZÁÉÍÓÚÑÜ.&]+)+$/.test(v)) return 'Nombre (¿propietario?)';
   if (/^\d{3,5}$/.test(v)) return 'Número corto (cilindraje, capacidad…)';
   if (/^\d{6,12}$/.test(v)) return 'Número (documento, licencia de tránsito…)';
   return '';
@@ -142,9 +144,14 @@ function interpretarTarjeta(resultado) {
   if (partes.filter((x) => x.trim()).length < 3) partes = texto.split(/[\x00-\x1f|;,]+|\s{2,}/);
   const campos = partes.map((x) => x.replace(/\s+/g, ' ').trim().toUpperCase()).filter(Boolean)
     .map((valor) => ({ etiqueta: etiquetarCampo(valor), valor }));
+  // El número que viene justo después del nombre se toma como documento del propietario
+  campos.forEach((c, i) => {
+    const sig = campos[i + 1];
+    if (c.etiqueta === 'Nombre (¿propietario?)' && sig && /^\d{6,12}$/.test(sig.valor.replace(/[.\-\s]/g, ''))) sig.etiqueta = 'Documento (¿propietario?)';
+  });
   const d = { campos, crudo: limpiarCampo(texto.replace(/\x00+/g, ' | ')) };
   for (const c of campos) {
-    const k = { 'Placa': 'placa', 'VIN / chasis': 'vin', 'Modelo (año)': 'modelo', Servicio: 'servicio', Clase: 'clase', Marca: 'marca', Color: 'color', Combustible: 'combustible' }[c.etiqueta];
+    const k = { 'Placa': 'placa', 'VIN / chasis': 'vin', 'Modelo (año)': 'modelo', Servicio: 'servicio', Clase: 'clase', Marca: 'marca', Color: 'color', Combustible: 'combustible', 'Nombre (¿propietario?)': 'propietario', 'Documento (¿propietario?)': 'propietario_doc' }[c.etiqueta];
     if (k && !d[k]) d[k] = k === 'placa' ? c.valor.replace(/[^A-Z0-9]/g, '') : c.valor;
   }
   return d;
