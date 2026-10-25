@@ -957,10 +957,18 @@ async function vistaFormVehiculo(id) {
   document.getElementById('codigo-tarjeta').onclick = async () => {
     const d = await escanearDocumento('vehiculo');
     if (!d) return;
+    const t = (x) => titulo(String(x || '').toLowerCase());
     if (d.placa) fVeh.placa.value = d.placa;
     if (d.modelo) fVeh.modelo.value = d.modelo;
-    if (d.vin && !fVeh.notas.value.includes(d.vin)) fVeh.notas.value = [fVeh.notas.value, 'VIN: ' + d.vin].filter(Boolean).join('\n');
-    document.getElementById('tarjeta-txt').textContent = '✔ Datos cargados del código. Revíselos antes de guardar.';
+    if (d.color) fVeh.color.value = t(d.color);
+    if (d.servicio) fVeh.servicio.value = t(d.servicio);
+    const desc = [d.clase, d.marca].filter(Boolean).map(t).join(' ');
+    if (desc && !fVeh.descripcion.value) fVeh.descripcion.value = desc;
+    if (d.aNotas && d.campos.length) {
+      const lista = 'Código de la tarjeta:\n' + d.campos.map((c, i) => `${c.etiqueta || 'Dato ' + (i + 1)}: ${c.valor}`).join('\n');
+      fVeh.notas.value = [fVeh.notas.value.replace(/Código de la tarjeta:[\s\S]*$/, '').trim(), lista].filter(Boolean).join('\n');
+    }
+    document.getElementById('tarjeta-txt').textContent = `✔ ${d.campos.length} datos leídos del código. Revíselos antes de guardar.`;
   };
   document.getElementById('foto-tarjeta').onchange = async (ev) => {
     const f = ev.target.files[0]; if (!f) return;

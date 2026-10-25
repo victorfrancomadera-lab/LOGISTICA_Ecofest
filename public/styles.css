@@ -179,3 +179,6 @@ input:focus, select:focus, textarea:focus, .btn:focus-visible { outline: 3px sol
 .esc-confirmar .datos td { padding: 3px 10px 3px 0; }
 .esc-confirmar .crudo { display: block; word-break: break-all; font-size: 12px; background: #F1F3F1; padding: 8px; border-radius: 8px; margin-top: 6px; }
 .esc-botones .btn { margin: 0; }
+.esc-confirmar .todos > div { padding: 6px 0; border-bottom: 1px solid var(--borde); }
+.esc-confirmar .todos span { display: block; font-size: 12px; color: var(--suave); }
+.esc-confirmar .todos b { word-break: break-word; }

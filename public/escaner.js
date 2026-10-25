@@ -115,19 +115,39 @@ function interpretar(resultado) {
   return d;
 }
 
-// Tarjeta de propiedad: el formato del código no está documentado; se buscan la placa, el VIN y el año y se pide confirmar
+// Tarjeta de propiedad: el formato del código no está documentado. Se separan todos los campos que trae
+// y a cada uno se le pone el nombre que se reconozca por su forma (placa, VIN, año, color, marca…).
+const VOCES_TARJETA = {
+  Servicio: /^(PARTICULAR|P[UÚ]BLICO|OFICIAL|DIPLOM[AÁ]TICO|ESPECIAL)$/,
+  Clase: /^(AUTOM[OÓ]VIL|CAMIONETA|CAMPERO|MICROB[UÚ]S|BUS|BUSETA|MOTOCICLETA|MOTOCARRO|CUATRIMOTO|CAMI[OÓ]N|VOLQUETA|TRACTOCAMI[OÓ]N|VAN)$/,
+  Combustible: /^(GASOLINA|DI[EÉ]SEL|ACPM|GAS|GNV|GAS ?GASOLINA|EL[EÉ]CTRICO|H[IÍ]BRIDO)$/,
+  Carrocería: /^(SED[AÁ]N|HATCH ?BACK|COUP[EÉ]|WAGON|STATION WAGON|CERRADA|DOBLE CABINA|ESTACAS|FURG[OÓ]N|PLATAFORMA|STREET|SPORT|TURISMO)$/,
+  Marca: /^(HYUNDAI|CHEVROLET|RENAULT|TOYOTA|KIA|NISSAN|MAZDA|FORD|VOLKSWAGEN|MERCEDES[ -]?BENZ|MERCEDES|SUZUKI|YAMAHA|HONDA|AUTECO|BAJAJ|AKT|JAC|FOTON|INTERNATIONAL|HINO|ISUZU|MITSUBISHI|DODGE|JEEP|BMW|AUDI|PEUGEOT|CITRO[EË]N|FIAT|SSANGYONG|CHERY|BYD|DFSK|GREAT WALL|SUBARU|VOLVO|KENWORTH|FREIGHTLINER|AGRALE|DAEWOO|KTM|TVS|VICTORY|HERO)$/,
+  Color: /^(BLANC[OA]|NEGR[OA]|GRIS|PLATA|PLATEAD[OA]|ROJ[OA]|AZUL|VERDE|AMARILL[OA]|NARANJA|BEIGE|CAF[EÉ]|VINOTINTO|DORAD[OA]|MORAD[OA]|BLANCO .+|GRIS .+|NEGRO .+|ROJO .+|AZUL .+|PLATA .+)$/,
+};
+function etiquetarCampo(v) {
+  if (/^[A-Z]{3}[ -]?(\d{3}|\d{2}[A-Z])$/.test(v)) return 'Placa';
+  if (/^[A-HJ-NPR-Z0-9]{17}$/.test(v) && /\d/.test(v) && /[A-Z]/.test(v)) return 'VIN / chasis';
+  if (/^(19[5-9]\d|20[0-4]\d)$/.test(v)) return 'Modelo (año)';
+  if (fechaValida(v.replace(/[-/]/g, '')) || /^\d{2}[-/]\d{2}[-/]\d{4}$/.test(v)) return 'Fecha';
+  for (const [etiqueta, re] of Object.entries(VOCES_TARJETA)) if (re.test(v)) return etiqueta;
+  if (/^\d{3,5}$/.test(v)) return 'Número corto (cilindraje, capacidad…)';
+  if (/^\d{6,12}$/.test(v)) return 'Número (documento, licencia de tránsito…)';
+  return '';
+}
 function interpretarTarjeta(resultado) {
   const utf8 = resultado.bytes && resultado.bytes.length ? new TextDecoder('utf-8').decode(resultado.bytes) : resultado.text;
-  const t = sinFoto(utf8).replace(/[\x00-\x1f]/g, '|').toUpperCase();
-  const placa = /(?<![A-Z0-9])([A-Z]{3})[ -]?(\d{3}|\d{2}[A-Z])(?![A-Z0-9])/.exec(t);
-  const vin = /(?<![A-Z0-9])([A-HJ-NPR-Z0-9]{17})(?![A-Z0-9])/.exec(t);
-  const modelo = /(?<!\d)(19[5-9]\d|20[0-4]\d)(?!\d)/.exec(t);
-  return {
-    placa: placa ? placa[1] + placa[2] : '',
-    vin: vin && /\d/.test(vin[1]) && /[A-Z]/.test(vin[1]) ? vin[1] : '',
-    modelo: modelo ? modelo[1] : '',
-    crudo: limpiarCampo(sinFoto(utf8).replace(/\x00+/g, ' | ')),
-  };
+  const texto = sinFoto(utf8);
+  let partes = texto.split(/[\x00-\x1f|;]+/);
+  if (partes.filter((x) => x.trim()).length < 3) partes = texto.split(/[\x00-\x1f|;,]+|\s{2,}/);
+  const campos = partes.map((x) => x.replace(/\s+/g, ' ').trim().toUpperCase()).filter(Boolean)
+    .map((valor) => ({ etiqueta: etiquetarCampo(valor), valor }));
+  const d = { campos, crudo: limpiarCampo(texto.replace(/\x00+/g, ' | ')) };
+  for (const c of campos) {
+    const k = { 'Placa': 'placa', 'VIN / chasis': 'vin', 'Modelo (año)': 'modelo', Servicio: 'servicio', Clase: 'clase', Marca: 'marca', Color: 'color', Combustible: 'combustible' }[c.etiqueta];
+    if (k && !d[k]) d[k] = k === 'placa' ? c.valor.replace(/[^A-Z0-9]/g, '') : c.valor;
+  }
+  return d;
 }
 
 // ---------- foto del frente (la lee Claude en el servidor) ----------
@@ -251,24 +271,28 @@ function escanearDocumento(modo = 'persona') {
     }
 
     function confirmarVehiculo(d) {
+      const tabla = d.campos.map((c, i) => `<div><span>${h(c.etiqueta || 'Dato ' + (i + 1))}</span><b>${h(c.valor)}</b></div>`).join('');
       capa.innerHTML = `
         <div class="esc-barra"><b>Datos del código</b><button type="button" class="btn chico" data-a="cerrar">Cancelar</button></div>
         <div class="esc-confirmar">
-          <div class="chip">Tarjeta de propiedad</div>
-          <label>Placa</label><input id="esc-placa" style="text-transform:uppercase" value="${h(d.placa)}">
-          <label>Modelo (año)</label><input id="esc-modelo" inputmode="numeric" value="${h(d.modelo)}">
-          <label>VIN / chasis</label><input id="esc-vin" style="text-transform:uppercase" value="${h(d.vin)}">
-          <p class="obs pequeno">Revise contra la tarjeta: todavía no conocemos el orden de los datos en este código.</p>
-          <details class="pequeno" open><summary>Texto del código</summary><code class="crudo">${h(d.crudo)}</code></details>
+          <div class="chip">Tarjeta de propiedad · ${d.campos.length} datos</div>
+          <label>Placa</label><input id="esc-placa" style="text-transform:uppercase" value="${h(d.placa || '')}">
+          <label>Modelo (año)</label><input id="esc-modelo" inputmode="numeric" value="${h(d.modelo || '')}">
+          <h2>Todo lo que trae el código</h2>
+          <div class="todos">${tabla || '<div>El código no trae campos legibles</div>'}</div>
+          <label class="check"><input type="checkbox" id="esc-notas" checked><span>Guardar todos estos datos en Notas</span></label>
+          <p class="obs pequeno">Los nombres de cada dato se deducen por su forma (placa, año, color, marca…). Los que dicen “Dato N” no se reconocieron: compárelos con la tarjeta.</p>
+          <details class="pequeno"><summary>Texto completo del código</summary><code class="crudo">${h(d.crudo)}</code></details>
           <p><button type="button" class="btn primario bloque grande" data-a="usar">Usar estos datos</button></p>
           <p><button type="button" class="btn bloque" data-a="otra">Escanear otra vez</button></p>
         </div>`;
       capa.querySelector('[data-a=cerrar]').onclick = () => terminar(null);
       capa.querySelector('[data-a=otra]').onclick = () => { capa.remove(); escanearDocumento(modo).then(resolver); };
       capa.querySelector('[data-a=usar]').onclick = () => terminar({
+        ...d,
         placa: capa.querySelector('#esc-placa').value.toUpperCase().replace(/[^A-Z0-9]/g, ''),
         modelo: capa.querySelector('#esc-modelo').value.replace(/\D/g, ''),
-        vin: capa.querySelector('#esc-vin').value.toUpperCase().replace(/[^A-Z0-9]/g, ''),
+        aNotas: capa.querySelector('#esc-notas').checked,
       });
     }
 
