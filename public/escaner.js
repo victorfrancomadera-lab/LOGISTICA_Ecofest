@@ -115,6 +115,21 @@ function interpretar(resultado) {
   return d;
 }
 
+// Tarjeta de propiedad: el formato del código no está documentado; se buscan la placa, el VIN y el año y se pide confirmar
+function interpretarTarjeta(resultado) {
+  const utf8 = resultado.bytes && resultado.bytes.length ? new TextDecoder('utf-8').decode(resultado.bytes) : resultado.text;
+  const t = sinFoto(utf8).replace(/[\x00-\x1f]/g, '|').toUpperCase();
+  const placa = /(?<![A-Z0-9])([A-Z]{3})[ -]?(\d{3}|\d{2}[A-Z])(?![A-Z0-9])/.exec(t);
+  const vin = /(?<![A-Z0-9])([A-HJ-NPR-Z0-9]{17})(?![A-Z0-9])/.exec(t);
+  const modelo = /(?<!\d)(19[5-9]\d|20[0-4]\d)(?!\d)/.exec(t);
+  return {
+    placa: placa ? placa[1] + placa[2] : '',
+    vin: vin && /\d/.test(vin[1]) && /[A-Z]/.test(vin[1]) ? vin[1] : '',
+    modelo: modelo ? modelo[1] : '',
+    crudo: limpiarCampo(sinFoto(utf8).replace(/\x00+/g, ' | ')),
+  };
+}
+
 // ---------- foto del frente (la lee Claude en el servidor) ----------
 function achicarFoto(archivo, lado = 1600) {
   return new Promise((ok, falla) => {
@@ -160,20 +175,23 @@ function unir(codigo, frente) {
 
 // ---------- pantalla del escáner ----------
 // escanearDocumento() abre la cámara y devuelve { documento, nombreCompleto, ... } ya confirmado, o null si se cancela.
-function escanearDocumento() {
+// Con modo 'vehiculo' lee el código de la tarjeta de propiedad y devuelve { placa, vin, modelo }.
+function escanearDocumento(modo = 'persona') {
+  const vehiculo = modo === 'vehiculo';
   return new Promise((resolver) => {
     const capa = document.createElement('div');
     capa.className = 'escaner';
     capa.innerHTML = `
-      <div class="esc-barra"><b>Escanear documento</b><button type="button" class="btn chico" data-a="cerrar">Cerrar</button></div>
+      <div class="esc-barra"><b>${vehiculo ? 'Escanear tarjeta de propiedad' : 'Escanear documento'}</b><button type="button" class="btn chico" data-a="cerrar">Cerrar</button></div>
       <div class="esc-video"><video playsinline muted></video><div class="esc-marco"></div></div>
-      <p class="esc-ayuda">Ponga el <b>reverso</b> de la cédula o de la licencia frente a la cámara, con el código de barras (el rectángulo de rayas) dentro del marco. Acerque hasta que se vea nítido.</p>
+      <p class="esc-ayuda">Ponga el código de barras (el rectángulo de rayas o el cuadro QR) ${vehiculo ? 'de la tarjeta de propiedad' : 'del <b>reverso</b> de la cédula o de la licencia'} dentro del marco. Acerque hasta que se vea nítido.</p>
       <div class="esc-botones">
         <button type="button" class="btn chico" data-a="linterna" hidden>🔦 Linterna</button>
         <label class="btn chico">📸 Foto del código<input type="file" accept="image/*" capture="environment" hidden data-a="foto-codigo"></label>
-        <label class="btn chico">🪪 Foto del frente<input type="file" accept="image/*" capture="environment" hidden data-a="foto-frente"></label>
+        ${vehiculo ? '' : '<label class="btn chico">🪪 Foto del frente<input type="file" accept="image/*" capture="environment" hidden data-a="foto-frente"></label>'}
       </div>
-      <p class="suave pequeno">La cédula amarilla trae todo en el código. La licencia solo trae número, categorías y parte del nombre: para el nombre completo, fechas y RH use <b>Foto del frente</b>.</p>
+      <p class="suave pequeno">${vehiculo ? 'Si el código no trae todos los datos, cierre y use <b>Leer tarjeta de propiedad</b> con la foto del frente.'
+        : 'La cédula amarilla trae todo en el código. La licencia solo trae número, categorías y parte del nombre: para el nombre completo, fechas y RH use <b>Foto del frente</b>.'}</p>
       <p class="esc-estado suave pequeno">Preparando cámara…</p>`;
     document.body.appendChild(capa);
     const video = capa.querySelector('video');
@@ -195,7 +213,7 @@ function escanearDocumento() {
       activo = false;
       if (navigator.vibrate) navigator.vibrate(80);
       if (flujo) flujo.getTracks().forEach((t) => t.stop());
-      confirmar(interpretar(r));
+      if (vehiculo) confirmarVehiculo(interpretarTarjeta(r)); else confirmar(interpretar(r));
       return true;
     }
 
@@ -232,7 +250,29 @@ function escanearDocumento() {
       };
     }
 
-    capa.querySelector('[data-a=foto-frente]').onchange = async (ev) => {
+    function confirmarVehiculo(d) {
+      capa.innerHTML = `
+        <div class="esc-barra"><b>Datos del código</b><button type="button" class="btn chico" data-a="cerrar">Cancelar</button></div>
+        <div class="esc-confirmar">
+          <div class="chip">Tarjeta de propiedad</div>
+          <label>Placa</label><input id="esc-placa" style="text-transform:uppercase" value="${h(d.placa)}">
+          <label>Modelo (año)</label><input id="esc-modelo" inputmode="numeric" value="${h(d.modelo)}">
+          <label>VIN / chasis</label><input id="esc-vin" style="text-transform:uppercase" value="${h(d.vin)}">
+          <p class="obs pequeno">Revise contra la tarjeta: todavía no conocemos el orden de los datos en este código.</p>
+          <details class="pequeno" open><summary>Texto del código</summary><code class="crudo">${h(d.crudo)}</code></details>
+          <p><button type="button" class="btn primario bloque grande" data-a="usar">Usar estos datos</button></p>
+          <p><button type="button" class="btn bloque" data-a="otra">Escanear otra vez</button></p>
+        </div>`;
+      capa.querySelector('[data-a=cerrar]').onclick = () => terminar(null);
+      capa.querySelector('[data-a=otra]').onclick = () => { capa.remove(); escanearDocumento(modo).then(resolver); };
+      capa.querySelector('[data-a=usar]').onclick = () => terminar({
+        placa: capa.querySelector('#esc-placa').value.toUpperCase().replace(/[^A-Z0-9]/g, ''),
+        modelo: capa.querySelector('#esc-modelo').value.replace(/\D/g, ''),
+        vin: capa.querySelector('#esc-vin').value.toUpperCase().replace(/[^A-Z0-9]/g, ''),
+      });
+    }
+
+    if (!vehiculo) capa.querySelector('[data-a=foto-frente]').onchange = async (ev) => {
       const f = ev.target.files[0]; if (!f) return;
       estadoTxt.textContent = 'Leyendo el frente del documento…';
       try {

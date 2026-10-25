@@ -921,8 +921,11 @@ async function vistaFormVehiculo(id) {
     <p><a href="#/vehiculos">← Vehículos</a></p>
     <h1>${id ? 'Editar' : 'Nuevo'} vehículo</h1>
     <form id="f-veh">
-      <label class="btn bloque">📷 Leer tarjeta de propiedad<input type="file" accept="image/*" capture="environment" hidden id="foto-tarjeta"></label>
-      <p class="suave pequeno" id="tarjeta-txt">Tome la foto del frente de la tarjeta: llena placa, vehículo, color, puestos y propietario.</p>
+      <div class="dos">
+        <label class="btn">📷 Leer tarjeta (foto)<input type="file" accept="image/*" capture="environment" hidden id="foto-tarjeta"></label>
+        <button type="button" class="btn" id="codigo-tarjeta">▦ Escanear código</button>
+      </div>
+      <p class="suave pequeno" id="tarjeta-txt">La foto del frente llena placa, vehículo, color, puestos y propietario. El código de barras llena la placa, el modelo y el VIN.</p>
       <div class="dos">
         <div><label>Placa *</label><input name="placa" value="${c('placa')}" required style="text-transform:uppercase"></div>
         <div><label>Puestos</label><input name="capacidad" inputmode="numeric" value="${c('capacidad')}"></div>
@@ -951,6 +954,14 @@ async function vistaFormVehiculo(id) {
       ${id ? '<p><button type="button" class="btn peligro bloque" id="borrar">Retirar vehículo</button></p>' : ''}
     </form>`);
   const fVeh = document.getElementById('f-veh');
+  document.getElementById('codigo-tarjeta').onclick = async () => {
+    const d = await escanearDocumento('vehiculo');
+    if (!d) return;
+    if (d.placa) fVeh.placa.value = d.placa;
+    if (d.modelo) fVeh.modelo.value = d.modelo;
+    if (d.vin && !fVeh.notas.value.includes(d.vin)) fVeh.notas.value = [fVeh.notas.value, 'VIN: ' + d.vin].filter(Boolean).join('\n');
+    document.getElementById('tarjeta-txt').textContent = '✔ Datos cargados del código. Revíselos antes de guardar.';
+  };
   document.getElementById('foto-tarjeta').onchange = async (ev) => {
     const f = ev.target.files[0]; if (!f) return;
     const txt = document.getElementById('tarjeta-txt');
