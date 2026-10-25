@@ -139,6 +139,14 @@ async function leerFrente(archivo) {
     categorias: r.categorias, organismo: r.organismo, delFrente: true,
   };
 }
+// Tarjeta de propiedad (licencia de tránsito) del vehículo: solo por foto
+async function leerTarjetaPropiedad(archivo) {
+  const r = await api('/leer-documento', { method: 'POST', body: { clase: 'vehiculo', imagen: await achicarFoto(archivo) } });
+  for (const k of ['marca', 'linea', 'color', 'clase', 'servicio']) r[k] = titulo(r[k] || '');
+  // Las empresas (S.A.S., LTDA) se dejan como vienen impresas
+  if (!/\b(S\.?A\.?S|LTDA|S\.?A)\b\.?/i.test(r.propietario || '')) r.propietario = titulo(r.propietario || '');
+  return r;
+}
 // Une lo del código de barras con lo del frente: el frente trae el nombre completo y las fechas
 function unir(codigo, frente) {
   const d = { ...codigo };

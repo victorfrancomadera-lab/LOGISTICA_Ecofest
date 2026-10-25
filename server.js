@@ -110,7 +110,10 @@ for (const [col, tipo] of [['ubicacion', 'TEXT'], ['grupo', 'TEXT'], ['es_grupo'
 }
 
 if (!db.prepare('PRAGMA table_info(usuarios)').all().some((c) => c.name === 'telefono')) db.exec('ALTER TABLE usuarios ADD COLUMN telefono TEXT');
-if (!db.prepare('PRAGMA table_info(vehiculos)').all().some((c) => c.name === 'conductor_licencia')) db.exec('ALTER TABLE vehiculos ADD COLUMN conductor_licencia TEXT');
+const columnasVeh = db.prepare('PRAGMA table_info(vehiculos)').all().map((c) => c.name);
+for (const col of ['conductor_licencia', 'modelo', 'servicio', 'propietario', 'propietario_doc', 'tarjeta_no']) {
+  if (!columnasVeh.includes(col)) db.exec(`ALTER TABLE vehiculos ADD COLUMN ${col} TEXT`);
+}
 
 // Caja menor: salidas de efectivo que no son las entregas de alimentación planeadas (transporte propio, compras, etc.)
 db.exec(`CREATE TABLE IF NOT EXISTS gastos (
@@ -294,7 +297,7 @@ api.put('/usuarios/:id', soloAdmin, (req, res) => {
 });
 
 // --- vehículos ---
-const CAMPOS_VEH = ['placa', 'descripcion', 'color', 'capacidad', 'conductor', 'conductor_tel', 'conductor_doc', 'conductor_licencia', 'notas'];
+const CAMPOS_VEH = ['placa', 'descripcion', 'color', 'capacidad', 'conductor', 'conductor_tel', 'conductor_doc', 'conductor_licencia', 'modelo', 'servicio', 'propietario', 'propietario_doc', 'tarjeta_no', 'notas'];
 function datosVehiculo(b) {
   return CAMPOS_VEH.map((k) => (k === 'capacidad' ? (b[k] ? Number(b[k]) : null) : k === 'placa' ? (txt(b[k]) || '').toUpperCase() : txt(b[k])));
 }
@@ -319,8 +322,45 @@ const ESQUEMA_DOCUMENTO = {
     organismo: { type: 'string', description: 'Organismo de tránsito o lugar de expedición, o vacío' },
   },
 };
+const ESQUEMA_TARJETA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['legible', 'placa', 'marca', 'linea', 'modelo', 'color', 'clase', 'servicio', 'capacidad', 'propietario', 'propietario_doc', 'tarjeta_no'],
+  properties: {
+    legible: { type: 'boolean', description: 'false si la foto no es una licencia de tránsito (tarjeta de propiedad) o no se puede leer' },
+    placa: { type: 'string', description: 'Ej. ABC123, sin espacios ni guiones' },
+    marca: { type: 'string' },
+    linea: { type: 'string' },
+    modelo: { type: 'string', description: 'Año del modelo, ej. 2019' },
+    color: { type: 'string' },
+    clase: { type: 'string', description: 'Ej. Automóvil, Camioneta, Microbús, Bus' },
+    servicio: { type: 'string', description: 'Particular, Público u Oficial' },
+    capacidad: { type: 'string', description: 'Número de pasajeros sentados, solo dígitos; vacío si no aparece' },
+    propietario: { type: 'string', description: 'Nombre completo del propietario' },
+    propietario_doc: { type: 'string', description: 'Número de identificación del propietario, solo dígitos' },
+    tarjeta_no: { type: 'string', description: 'Número de la licencia de tránsito' },
+  },
+};
+const LECTURAS = {
+  persona: {
+    esquema: ESQUEMA_DOCUMENTO,
+    texto: 'Es la foto de un documento colombiano (cédula o licencia de conducción) tomada con el celular. '
+      + 'Transcribe los datos tal como aparecen impresos, con tildes y Ñ. Fechas en formato AAAA-MM-DD (en el documento vienen DD-MM-AAAA). '
+      + 'No inventes: si un dato no aparece o no se lee con seguridad, déjalo vacío.',
+    noLegible: 'No se reconoce un documento en la foto. Tómela de frente, con buena luz y sin reflejos.',
+  },
+  vehiculo: {
+    esquema: ESQUEMA_TARJETA,
+    texto: 'Es la foto de una licencia de tránsito colombiana (tarjeta de propiedad de un vehículo) tomada con el celular. '
+      + 'Transcribe los datos tal como aparecen impresos, con tildes y Ñ. '
+      + 'No inventes: si un dato no aparece o no se lee con seguridad, déjalo vacío.',
+    noLegible: 'No se reconoce una tarjeta de propiedad en la foto. Tómela de frente, con buena luz y sin reflejos.',
+  },
+};
 api.post('/leer-documento', async (req, res) => {
   if (!claude) return res.status(503).json({ error: 'Falta configurar ANTHROPIC_API_KEY en Railway para leer fotos.' });
+  const lectura = LECTURAS[req.body.clase || 'persona'];
+  if (!lectura) return res.status(400).json({ error: 'Tipo de documento no válido' });
   const m = /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/.exec(String(req.body.imagen || ''));
   if (!m) return res.status(400).json({ error: 'Foto no válida' });
   try {
@@ -329,19 +369,18 @@ api.post('/leer-documento', async (req, res) => {
       max_tokens: 4000,
       betas: ['server-side-fallback-2026-07-01'],
       fallbacks: 'default',
-      output_config: { effort: 'low', format: { type: 'json_schema', schema: ESQUEMA_DOCUMENTO } },
+      output_config: { effort: 'low', format: { type: 'json_schema', schema: lectura.esquema } },
       messages: [{ role: 'user', content: [
         { type: 'image', source: { type: 'base64', media_type: m[1], data: m[2] } },
-        { type: 'text', text: 'Es la foto de un documento colombiano (cédula o licencia de conducción) tomada con el celular. '
-          + 'Transcribe los datos tal como aparecen impresos, con tildes y Ñ. Fechas en formato AAAA-MM-DD (en el documento vienen DD-MM-AAAA). '
-          + 'No inventes: si un dato no aparece o no se lee con seguridad, déjalo vacío.' },
+        { type: 'text', text: lectura.texto },
       ] }],
     });
     if (r.stop_reason === 'refusal') return res.status(422).json({ error: 'No se pudo leer esta foto. Escriba los datos a mano.' });
     const texto = r.content.find((b) => b.type === 'text');
     const d = JSON.parse(texto ? texto.text : '{}');
-    if (!d.legible) return res.status(422).json({ error: 'No se reconoce un documento en la foto. Tómela de frente, con buena luz y sin reflejos.' });
-    d.numero = String(d.numero || '').replace(/\D/g, '');
+    if (!d.legible) return res.status(422).json({ error: lectura.noLegible });
+    for (const k of ['numero', 'capacidad', 'propietario_doc']) if (k in d) d[k] = String(d[k] || '').replace(/\D/g, '');
+    if ('placa' in d) d.placa = String(d.placa || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
     res.json(d);
   } catch (e) {
     console.error('leer-documento:', e.status || '', e.message);

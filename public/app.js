@@ -906,6 +906,7 @@ async function vistaVehiculos() {
       <div class="fila entre"><span class="titulo" style="font-size:20px">${h(v.placa)}</span>${esAdmin() ? `<a class="btn chico" href="#/vehiculos/${v.id}">Editar</a>` : ''}</div>
       <div class="suave">${h([v.descripcion, v.color, v.capacidad ? v.capacidad + ' puestos' : ''].filter(Boolean).join(' · '))}</div>
       <div style="margin-top:6px">👤 ${h(v.conductor || 'Sin conductor')} ${v.conductor_doc ? '· CC ' + h(v.conductor_doc) : ''}${v.conductor_licencia ? ' · 🪪 ' + h(v.conductor_licencia) : ''}</div>
+      ${v.propietario || v.modelo ? `<div class="suave pequeno" style="margin-top:4px">${h([v.modelo && 'Modelo ' + v.modelo, v.servicio, v.propietario && 'Propietario: ' + v.propietario].filter(Boolean).join(' · '))}</div>` : ''}
       ${v.conductor_tel ? `<div class="fila" style="margin-top:8px"><a class="btn chico" href="tel:${h(telLimpio(v.conductor_tel))}">📞 ${h(v.conductor_tel)}</a>
         <a class="btn chico" href="${waLink(v.conductor_tel)}" target="_blank" rel="noopener">💬 WhatsApp</a></div>` : ''}
       ${v.notas ? `<div class="suave pequeno" style="margin-top:6px">${h(v.notas)}</div>` : ''}
@@ -920,6 +921,8 @@ async function vistaFormVehiculo(id) {
     <p><a href="#/vehiculos">← Vehículos</a></p>
     <h1>${id ? 'Editar' : 'Nuevo'} vehículo</h1>
     <form id="f-veh">
+      <label class="btn bloque">📷 Leer tarjeta de propiedad<input type="file" accept="image/*" capture="environment" hidden id="foto-tarjeta"></label>
+      <p class="suave pequeno" id="tarjeta-txt">Tome la foto del frente de la tarjeta: llena placa, vehículo, color, puestos y propietario.</p>
       <div class="dos">
         <div><label>Placa *</label><input name="placa" value="${c('placa')}" required style="text-transform:uppercase"></div>
         <div><label>Puestos</label><input name="capacidad" inputmode="numeric" value="${c('capacidad')}"></div>
@@ -928,6 +931,15 @@ async function vistaFormVehiculo(id) {
         <div><label>Tipo / marca</label><input name="descripcion" value="${c('descripcion')}" placeholder="Ej. Van Hyundai H1"></div>
         <div><label>Color</label><input name="color" value="${c('color')}"></div>
       </div>
+      <div class="dos">
+        <div><label>Modelo (año)</label><input name="modelo" inputmode="numeric" value="${c('modelo')}"></div>
+        <div><label>Servicio</label><input name="servicio" value="${c('servicio')}" placeholder="Particular / Público"></div>
+      </div>
+      <div class="dos">
+        <div><label>Propietario</label><input name="propietario" value="${c('propietario')}"></div>
+        <div><label>Doc. propietario</label><input name="propietario_doc" inputmode="numeric" value="${c('propietario_doc')}"></div>
+      </div>
+      <label>N.º licencia de tránsito</label><input name="tarjeta_no" value="${c('tarjeta_no')}">
       <label>Conductor</label><input name="conductor" value="${c('conductor')}">
       <div class="dos">
         <div><label>Celular conductor</label><input name="conductor_tel" type="tel" value="${c('conductor_tel')}"></div>
@@ -939,6 +951,24 @@ async function vistaFormVehiculo(id) {
       ${id ? '<p><button type="button" class="btn peligro bloque" id="borrar">Retirar vehículo</button></p>' : ''}
     </form>`);
   const fVeh = document.getElementById('f-veh');
+  document.getElementById('foto-tarjeta').onchange = async (ev) => {
+    const f = ev.target.files[0]; if (!f) return;
+    const txt = document.getElementById('tarjeta-txt');
+    txt.textContent = 'Leyendo la tarjeta…';
+    try {
+      const t = await leerTarjetaPropiedad(f);
+      const antes = fVeh.placa.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const poner = (campo, valor) => { if (valor) fVeh[campo].value = valor; };
+      poner('placa', t.placa); poner('capacidad', t.capacidad); poner('color', t.color);
+      poner('descripcion', [t.clase, t.marca, t.linea].filter(Boolean).join(' '));
+      poner('modelo', t.modelo); poner('servicio', t.servicio); poner('propietario', t.propietario);
+      poner('propietario_doc', t.propietario_doc); poner('tarjeta_no', t.tarjeta_no);
+      txt.textContent = antes && t.placa && antes !== t.placa
+        ? `⚠️ La placa de la tarjeta (${t.placa}) no es la que estaba registrada (${antes}). Revise antes de guardar.`
+        : '✔ Datos cargados de la tarjeta. Revíselos antes de guardar.';
+    } catch (e) { txt.textContent = e.message; }
+    ev.target.value = '';
+  };
   botonEscanear(fVeh.conductor_doc, (d) => {
     if (d.nombreCompleto) fVeh.conductor.value = d.nombreCompleto;
     const lic = [d.categorias, d.vence && 'vence ' + d.vence, d.expedicion && 'expedida ' + d.expedicion].filter(Boolean).join(' · ');

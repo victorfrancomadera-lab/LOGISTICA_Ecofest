@@ -13,6 +13,7 @@ App web para el equipo en calle:
 - Cédula amarilla con hologramas (PDF417): número, nombres, apellidos, sexo, nacimiento y RH.
 - Licencia de conducción y cédula digital: se extrae lo que el código traiga legible (número, nombre, categorías, vigencia) y siempre se pide revisar.
 - **Foto del frente**: la licencia no trae en el código el nombre completo, las fechas ni el RH. El botón **🪪 Foto del frente** (o **Completar con foto del frente** después de escanear) manda la foto a Claude, que transcribe los datos impresos. La foto no se guarda. Requiere la variable `ANTHROPIC_API_KEY` en Railway; sin ella, la app avisa y el resto sigue funcionando. `/healthz` muestra `lectura_fotos: true` cuando está configurada.
+- **Tarjeta de propiedad**: en **Vehículos → Nuevo/Editar**, el botón **📷 Leer tarjeta de propiedad** lee con Claude la foto del frente y llena placa, clase/marca/línea, color, puestos, modelo, servicio, propietario y número de la licencia de tránsito.
 - El lector (`zxing-wasm`) se sirve desde la propia app en `/vendor/zxing`; no depende de un CDN. Requiere HTTPS (Railway ya lo da).
 
 Los dos módulos se exportan a Excel (CSV) desde **Más**.
