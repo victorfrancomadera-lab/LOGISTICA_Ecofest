@@ -1,3 +1,4 @@
+# Uso: python3 docs/generar_pdf_lector.py docs/lector-documentos-tecnico.pdf docs/logo_sis.png
 import sys
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import cm
@@ -17,11 +18,16 @@ pdfmetrics.registerFont(TTFont('M', F + 'DejaVuSansMono.ttf'))
 from reportlab.pdfbase.pdfmetrics import registerFontFamily
 registerFontFamily('S', normal='S', bold='SB', italic='SI', boldItalic='SB')
 
-VERDE = colors.HexColor('#183A2C')
-LIMA = colors.HexColor('#8DC63F')
-GRIS = colors.HexColor('#5E6B64')
-BORDE = colors.HexColor('#DDE3DE')
-FONDO = colors.HexColor('#F5F7F4')
+# Colores de SIS (Servicios Integrales en Sistemas), tomados del logo
+VERDE = colors.HexColor('#2F6F6B')   # teal oscuro: títulos y encabezados de tabla
+TEAL = colors.HexColor('#409290')
+LIMA = colors.HexColor('#90B140')    # verde del logo: acentos
+AZUL = colors.HexColor('#285A99')
+CARBON = colors.HexColor('#242527')  # gris de las letras SIS
+GRIS = colors.HexColor('#5B6466')
+BORDE = colors.HexColor('#D6E3E2')
+FONDO = colors.HexColor('#EEF5F4')
+LOGO = sys.argv[2]
 AMBAR = colors.HexColor('#FFF1D6')
 
 st = {
@@ -102,38 +108,48 @@ class Flujo(Flowable):
 def fondo_pagina(c, doc):
     c.saveState()
     w, h = letter
-    c.setFillColor(VERDE); c.rect(0, h - 0.9 * cm, w, 0.9 * cm, fill=1, stroke=0)
-    c.setFillColor(LIMA); c.rect(0, h - 0.98 * cm, w, 0.08 * cm, fill=1, stroke=0)
+    c.setFillColor(CARBON); c.rect(0, h - 0.9 * cm, w, 0.9 * cm, fill=1, stroke=0)
+    c.setFillColor(TEAL); c.rect(0, h - 0.98 * cm, w * 0.6, 0.08 * cm, fill=1, stroke=0)
+    c.setFillColor(LIMA); c.rect(w * 0.6, h - 0.98 * cm, w * 0.4, 0.08 * cm, fill=1, stroke=0)
     c.setFillColor(colors.white); c.setFont('SB', 8.5)
-    c.drawString(2 * cm, h - 0.6 * cm, 'Ecofest · Logística')
+    c.drawString(2 * cm, h - 0.6 * cm, 'SIS · Servicios Integrales en Sistemas')
     c.setFont('S', 8.5); c.drawRightString(w - 2 * cm, h - 0.6 * cm, 'Lector de documentos · Documento técnico')
     c.setFillColor(GRIS); c.setFont('S', 7.5)
-    c.drawString(2 * cm, 1.2 * cm, 'Versión de la app: commit bac3132 · Octubre de 2026')
+    c.drawString(2 * cm, 1.2 * cm, 'SIS · Versión del lector: commit bac3132 · Octubre de 2026')
     c.drawRightString(w - 2 * cm, 1.2 * cm, f'Página {doc.page}')
     c.restoreState()
 
 def portada(c, doc):
     c.saveState()
     w, h = letter
-    c.setFillColor(VERDE); c.rect(0, 0, w, h, fill=1, stroke=0)
-    c.setFillColor(LIMA); c.rect(2 * cm, h - 9.4 * cm, 3 * cm, 0.18 * cm, fill=1, stroke=0)
-    c.setFillColor(colors.white); c.setFont('SB', 30)
-    c.drawString(2 * cm, h - 7 * cm, 'Lector de documentos')
-    c.setFont('S', 15)
-    c.drawString(2 * cm, h - 8.2 * cm, 'Cómo funciona la lectura con el celular')
-    c.setFont('S', 10.5); c.setFillColor(colors.HexColor('#C9D3CD'))
-    y = h - 11 * cm
+    c.setFillColor(colors.white); c.rect(0, 0, w, h, fill=1, stroke=0)
+    # logo arriba, en su proporción original
+    from reportlab.lib.utils import ImageReader
+    img = ImageReader(LOGO); iw, ih = img.getSize()
+    lw = 9 * cm; lh = lw * ih / iw
+    c.drawImage(img, 2 * cm, h - 2.5 * cm - lh, lw, lh, mask='auto')
+    y0 = h - 2.5 * cm - lh - 2.2 * cm
+    c.setFillColor(CARBON); c.setFont('SB', 30)
+    c.drawString(2 * cm, y0, 'Lector de documentos')
+    c.setFillColor(VERDE); c.setFont('S', 15)
+    c.drawString(2 * cm, y0 - 1.1 * cm, 'Cómo funciona la lectura con el celular')
+    c.setFillColor(LIMA); c.rect(2 * cm, y0 - 1.9 * cm, 3 * cm, 0.18 * cm, fill=1, stroke=0)
+    c.setFont('S', 10.5); c.setFillColor(GRIS)
+    y = y0 - 3.1 * cm
     for linea in ['Cédulas, tarjetas de identidad, cédula de extranjería, PPT,',
                   'licencia de conducción, tarjeta de propiedad, SOAT y técnico-mecánica.',
-                  '', 'Documento técnico · Ecofest · Logística',
-                  'Repositorio: victorfrancomadera-lab/LOGISTICA_Ecofest · commit bac3132',
+                  '', 'Documento técnico · SIS · Servicios Integrales en Sistemas',
                   'Octubre de 2026']:
         c.drawString(2 * cm, y, linea); y -= 0.6 * cm
+    # franja inferior con los tres colores del logo
+    c.setFillColor(TEAL); c.rect(0, 0, w * 0.55, 1.1 * cm, fill=1, stroke=0)
+    c.setFillColor(AZUL); c.rect(w * 0.55, 0, w * 0.15, 1.1 * cm, fill=1, stroke=0)
+    c.setFillColor(LIMA); c.rect(w * 0.7, 0, w * 0.3, 1.1 * cm, fill=1, stroke=0)
     c.restoreState()
 
 def construir(salida):
     doc = BaseDocTemplate(salida, pagesize=letter, leftMargin=2 * cm, rightMargin=2 * cm, topMargin=2 * cm, bottomMargin=2 * cm,
-                          title='Lector de documentos · Documento técnico', author='Ecofest · Logística',
+                          title='Lector de documentos · Documento técnico', author='SIS · Servicios Integrales en Sistemas',
                           subject='Funcionamiento del lector de códigos de barras y lectura por foto')
     marco = Frame(doc.leftMargin, doc.bottomMargin, doc.width, doc.height, id='f')
     doc.addPageTemplates([PageTemplate(id='portada', frames=[marco], onPage=portada),
