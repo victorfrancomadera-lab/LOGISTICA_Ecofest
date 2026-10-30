@@ -111,7 +111,8 @@ for (const [col, tipo] of [['ubicacion', 'TEXT'], ['grupo', 'TEXT'], ['es_grupo'
 
 if (!db.prepare('PRAGMA table_info(usuarios)').all().some((c) => c.name === 'telefono')) db.exec('ALTER TABLE usuarios ADD COLUMN telefono TEXT');
 const columnasVeh = db.prepare('PRAGMA table_info(vehiculos)').all().map((c) => c.name);
-for (const col of ['conductor_licencia', 'modelo', 'servicio', 'propietario', 'propietario_doc', 'tarjeta_no']) {
+for (const col of ['conductor_licencia', 'modelo', 'servicio', 'propietario', 'propietario_doc', 'tarjeta_no',
+  'soat_numero', 'soat_entidad', 'soat_vence', 'rtm_numero', 'rtm_entidad', 'rtm_vence']) {
   if (!columnasVeh.includes(col)) db.exec(`ALTER TABLE vehiculos ADD COLUMN ${col} TEXT`);
 }
 
@@ -297,7 +298,8 @@ api.put('/usuarios/:id', soloAdmin, (req, res) => {
 });
 
 // --- vehículos ---
-const CAMPOS_VEH = ['placa', 'descripcion', 'color', 'capacidad', 'conductor', 'conductor_tel', 'conductor_doc', 'conductor_licencia', 'modelo', 'servicio', 'propietario', 'propietario_doc', 'tarjeta_no', 'notas'];
+const CAMPOS_VEH = ['placa', 'descripcion', 'color', 'capacidad', 'conductor', 'conductor_tel', 'conductor_doc', 'conductor_licencia', 'modelo', 'servicio', 'propietario', 'propietario_doc', 'tarjeta_no',
+  'soat_numero', 'soat_entidad', 'soat_vence', 'rtm_numero', 'rtm_entidad', 'rtm_vence', 'notas'];
 function datosVehiculo(b) {
   return CAMPOS_VEH.map((k) => (k === 'capacidad' ? (b[k] ? Number(b[k]) : null) : k === 'placa' ? (txt(b[k]) || '').toUpperCase() : txt(b[k])));
 }
@@ -306,10 +308,11 @@ const claude = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
 const ESQUEMA_DOCUMENTO = {
   type: 'object',
   additionalProperties: false,
-  required: ['legible', 'tipo', 'numero', 'nombres', 'apellidos', 'sexo', 'nacimiento', 'rh', 'expedicion', 'vence', 'categorias', 'organismo'],
+  required: ['legible', 'tipo', 'numero', 'nombres', 'apellidos', 'sexo', 'nacimiento', 'rh', 'expedicion', 'vence', 'categorias', 'organismo', 'nacionalidad'],
   properties: {
     legible: { type: 'boolean', description: 'false si la foto no es un documento de identidad o no se puede leer' },
-    tipo: { type: 'string', enum: ['Cédula de ciudadanía', 'Licencia de conducción', 'Tarjeta de identidad', 'Cédula de extranjería', 'Pasaporte', 'Otro'] },
+    tipo: { type: 'string', enum: ['Cédula de ciudadanía', 'Licencia de conducción', 'Tarjeta de identidad', 'Cédula de extranjería',
+      'Permiso por Protección Temporal (PPT)', 'Pasaporte', 'Otro'] },
     numero: { type: 'string', description: 'Solo dígitos, sin puntos' },
     nombres: { type: 'string' },
     apellidos: { type: 'string' },
@@ -320,6 +323,20 @@ const ESQUEMA_DOCUMENTO = {
     vence: { type: 'string', description: 'AAAA-MM-DD o vacío' },
     categorias: { type: 'string', description: 'Categorías de la licencia separadas por coma, ej. B1, C1; vacío si no aparecen' },
     organismo: { type: 'string', description: 'Organismo de tránsito o lugar de expedición, o vacío' },
+    nacionalidad: { type: 'string', description: 'Nacionalidad si aparece (ej. Venezolana), o vacío' },
+  },
+};
+const ESQUEMA_VIGENCIA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['legible', 'placa', 'numero', 'entidad', 'desde', 'vence'],
+  properties: {
+    legible: { type: 'boolean', description: 'false si la foto no es el documento pedido o no se puede leer' },
+    placa: { type: 'string', description: 'Ej. ABC123, sin espacios ni guiones' },
+    numero: { type: 'string', description: 'Número de póliza (SOAT) o de certificado (técnico-mecánica)' },
+    entidad: { type: 'string', description: 'Aseguradora (SOAT) o nombre del CDA (técnico-mecánica)' },
+    desde: { type: 'string', description: 'Inicio de vigencia o fecha de expedición, AAAA-MM-DD o vacío' },
+    vence: { type: 'string', description: 'Fin de vigencia o fecha de vencimiento, AAAA-MM-DD o vacío' },
   },
 };
 const ESQUEMA_TARJETA = {
@@ -344,7 +361,8 @@ const ESQUEMA_TARJETA = {
 const LECTURAS = {
   persona: {
     esquema: ESQUEMA_DOCUMENTO,
-    texto: 'Es la foto de un documento colombiano (cédula o licencia de conducción) tomada con el celular. '
+    texto: 'Es la foto de un documento de identidad expedido en Colombia (cédula, tarjeta de identidad, cédula de extranjería, '
+      + 'PPT o licencia de conducción) tomada con el celular. '
       + 'Transcribe los datos tal como aparecen impresos, con tildes y Ñ. Fechas en formato AAAA-MM-DD (en el documento vienen DD-MM-AAAA). '
       + 'No inventes: si un dato no aparece o no se lee con seguridad, déjalo vacío.',
     noLegible: 'No se reconoce un documento en la foto. Tómela de frente, con buena luz y sin reflejos.',
@@ -355,6 +373,20 @@ const LECTURAS = {
       + 'Transcribe los datos tal como aparecen impresos, con tildes y Ñ. '
       + 'No inventes: si un dato no aparece o no se lee con seguridad, déjalo vacío.',
     noLegible: 'No se reconoce una tarjeta de propiedad en la foto. Tómela de frente, con buena luz y sin reflejos.',
+  },
+  soat: {
+    esquema: ESQUEMA_VIGENCIA,
+    texto: 'Es la foto de un SOAT colombiano (seguro obligatorio de accidentes de tránsito), impreso o en pantalla. '
+      + 'Transcribe placa, número de póliza, aseguradora y la vigencia (desde y hasta). Fechas en formato AAAA-MM-DD. '
+      + 'No inventes: si un dato no aparece o no se lee con seguridad, déjalo vacío.',
+    noLegible: 'No se reconoce un SOAT en la foto. Tómela de frente, con buena luz y sin reflejos.',
+  },
+  tecnomecanica: {
+    esquema: ESQUEMA_VIGENCIA,
+    texto: 'Es la foto de un certificado de revisión técnico-mecánica y de emisiones contaminantes de Colombia. '
+      + 'Transcribe placa, número de certificado, nombre del CDA, fecha de expedición (desde) y fecha de vencimiento. '
+      + 'Fechas en formato AAAA-MM-DD. No inventes: si un dato no aparece o no se lee con seguridad, déjalo vacío.',
+    noLegible: 'No se reconoce un certificado de técnico-mecánica en la foto. Tómela de frente, con buena luz y sin reflejos.',
   },
 };
 api.post('/leer-documento', async (req, res) => {
@@ -379,7 +411,10 @@ api.post('/leer-documento', async (req, res) => {
     const texto = r.content.find((b) => b.type === 'text');
     const d = JSON.parse(texto ? texto.text : '{}');
     if (!d.legible) return res.status(422).json({ error: lectura.noLegible });
-    for (const k of ['numero', 'capacidad', 'propietario_doc']) if (k in d) d[k] = String(d[k] || '').replace(/\D/g, '');
+    // Documentos de persona y del propietario: solo dígitos. Póliza y certificado pueden llevar letras.
+    const soloDigitos = lectura.esquema === ESQUEMA_VIGENCIA ? ['capacidad'] : ['numero', 'capacidad', 'propietario_doc'];
+    for (const k of soloDigitos) if (k in d) d[k] = String(d[k] || '').replace(/\D/g, '');
+    if ('numero' in d) d.numero = String(d.numero || '').trim();
     if ('placa' in d) d.placa = String(d.placa || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
     res.json(d);
   } catch (e) {
@@ -809,12 +844,14 @@ app.get('/healthz', (req, res) => res.json({ ok: true, version: VERSION, datos_p
 // Sin caché: cada vez que se abre la app, el celular revisa si hay versión nueva
 const sinCache = (res) => res.setHeader('Cache-Control', 'no-cache');
 const INDEX = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8')
-  .replace('/styles.css"', `/styles.css?v=${VERSION}"`).replace('/app.js"', `/app.js?v=${VERSION}"`).replace('/escaner.js"', `/escaner.js?v=${VERSION}"`);
+  .replace('/styles.css"', `/styles.css?v=${VERSION}"`).replace('/app.js"', `/app.js?v=${VERSION}"`).replace('/escaner.js"', `/escaner.js?v=${VERSION}"`)
+  .replace('/lector-codigos.js"', `/lector-codigos.js?v=${VERSION}"`);
 const enviarIndex = (req, res) => { res.setHeader('Cache-Control', 'no-store'); res.type('html').send(INDEX); };
 app.get(['/', '/index.html'], enviarIndex);
 app.use(express.static(path.join(__dirname, 'public'), { setHeaders: sinCache, index: false }));
 // Lector de códigos de barras (cédula y licencia), servido desde el propio servidor
 const ZXING = path.join(__dirname, 'node_modules', 'zxing-wasm', 'dist');
+app.get('/lector-codigos.js', (req, res) => { sinCache(res); res.sendFile(path.join(__dirname, 'lector-codigos', 'lector-codigos-colombia.js')); });
 app.get('/vendor/zxing/reader.js', (req, res) => res.sendFile(path.join(ZXING, 'iife', 'reader', 'index.js'), { maxAge: '7d' }));
 app.get('/vendor/zxing/zxing_reader.wasm', (req, res) => res.sendFile(path.join(ZXING, 'reader', 'zxing_reader.wasm'), { maxAge: '7d' }));
 app.get('*', enviarIndex);

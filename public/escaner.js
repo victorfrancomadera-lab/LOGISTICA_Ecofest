@@ -1,161 +1,16 @@
 'use strict';
-// Escáner de cédula y licencia de conducción (código PDF417 o QR del reverso) con la cámara del celular.
-// Lee con zxing-wasm (servido desde /vendor/zxing, sin CDN) y muestra los datos para confirmarlos antes de llenar el formulario.
+// Pantalla del escáner de documentos con la cámara del celular. La lectura e interpretación de los códigos
+// (cédulas, tarjetas de identidad, extranjería/PPT, licencia, tarjeta de propiedad, SOAT y técnico-mecánica)
+// está en /lector-codigos.js (LectorCodigos); aquí van la pantalla, la confirmación y la lectura por foto con Claude.
 
-let zxingListo = null;
-function cargarZXing() {
-  if (zxingListo) return zxingListo;
-  zxingListo = new Promise((ok, falla) => {
-    const s = document.createElement('script');
-    s.src = '/vendor/zxing/reader.js';
-    s.onload = () => {
-      ZXingWASM.prepareZXingModule({
-        overrides: { locateFile: (p, prefijo) => (p.endsWith('.wasm') ? '/vendor/zxing/zxing_reader.wasm' : prefijo + p) },
-        fireImmediately: true,
-      }).then(ok, falla);
-    };
-    s.onerror = () => { zxingListo = null; falla(new Error('No se pudo cargar el lector. Revise la conexión.')); };
-    document.head.appendChild(s);
-  });
-  return zxingListo;
-}
-
-const OPCIONES_LECTOR = { formats: ['PDF417', 'QRCode'], tryHarder: true, tryRotate: true, tryInvert: false, maxNumberOfSymbols: 1 };
-
-// ---------- interpretación de los datos ----------
-const latin1 = (bytes) => Array.from(bytes, (b) => String.fromCharCode(b)).join('');
-const limpiarCampo = (s) => s.replace(/[\x00-\x1f\x7f-\x9f]/g, ' ').replace(/\s+/g, ' ').trim();
-const soloLetras = (s) => /^[A-ZÁÉÍÓÚÑÜ ]+$/.test(s);
-function fechaValida(aaaammdd) {
-  const m = /^(\d{4})(\d{2})(\d{2})$/.exec(aaaammdd || '');
-  if (!m) return '';
-  const [a, me, d] = [+m[1], +m[2], +m[3]];
-  if (a < 1900 || a > 2100 || me < 1 || me > 12 || d < 1 || d > 31) return '';
-  return `${m[1]}-${m[2]}-${m[3]}`;
-}
+const cargarZXing = () => LectorCodigos.cargarLector();
 const titulo = (s) => s.toLowerCase().replace(/(^|\s)(\S)/g, (_, e, l) => e + l.toUpperCase());
-
-// Cédula amarilla con hologramas: PDF417 de posiciones fijas (documento 48-58, apellidos, nombres, sexo, nacimiento, RH)
-function leerCedulaAmarilla(raw) {
-  if (raw.length < 160) return null;
-  const doc = raw.slice(48, 58).replace(/\D/g, '').replace(/^0+/, '');
-  const campos = [raw.slice(58, 81), raw.slice(81, 104), raw.slice(104, 127), raw.slice(127, 150)].map(limpiarCampo);
-  if (doc.length < 5 || !campos[0] || !campos[2] || !campos.every((c) => !c || soloLetras(c))) return null;
-  const resto = raw.slice(150);
-  const sn = /([MF])(\d{8})/.exec(resto);
-  const rh = /(A|B|AB|O)\s?([+-])/.exec(raw.slice(160).replace(/\x00/g, ' '));
-  return {
-    tipo: 'Cédula de ciudadanía',
-    documento: doc,
-    apellidos: titulo([campos[0], campos[1]].filter(Boolean).join(' ')),
-    nombres: titulo([campos[2], campos[3]].filter(Boolean).join(' ')),
-    sexo: sn ? sn[1] : '',
-    nacimiento: sn ? fechaValida(sn[2]) : '',
-    rh: rh ? rh[1] + rh[2] : '',
-  };
-}
-
-// Licencia de conducción, cédula digital u otro código: se extrae lo que se pueda reconocer y se pide confirmar
-function leerGenerico(texto) {
-  const t = texto.replace(/[\x00-\x1f]/g, '|');
-  const datos = { tipo: /LICENCIA|CONDUC|RUNT|TRANSITO|TRÁNSITO/i.test(t) ? 'Licencia de conducción' : 'Documento' };
-  const fechas = [...t.matchAll(/(?<!\d)(\d{4})[-/]?(\d{2})[-/]?(\d{2})(?!\d)|(?<!\d)(\d{2})[-/](\d{2})[-/](\d{4})(?!\d)/g)]
-    .map((m) => (m[1] ? fechaValida(m[1] + m[2] + m[3]) : fechaValida(m[6] + m[5] + m[4]))).filter(Boolean);
-  const sinFechas = t.replace(/(?<!\d)(\d{4})[-/]?(\d{2})[-/]?(\d{2})(?!\d)/g, (m, a, me, d) => (fechaValida(a + me + d) ? '|' : m))
-    .replace(/(?<!\d)\d{2}[-/]\d{2}[-/]\d{4}(?!\d)/g, '|');
-  const numeros = (sinFechas.match(/\d{6,10}/g) || []).map((n) => n.replace(/^0+/, '')).filter((n) => n.length >= 6);
-  if (numeros.length) datos.documento = numeros[0];
-  const vacias = /\b(LICENCIA|CONDUCCI[OÓ]N|REP[UÚ]BLICA|COLOMBIA|MINISTERIO|TRANSPORTE|RUNT|C[EÉ]DULA|NUIP|TR[AÁ]NSITO|SERVICIO|PARTICULAR|P[UÚ]BLICO|CATEGOR[IÍ]A|NACIONALIDAD|COL)\b/;
-  const nombres = t.toUpperCase().split(/[|,;:\t]+/).map((x) => x.replace(/\s+/g, ' ').trim())
-    .filter((x) => x.length >= 3 && /^[A-ZÁÉÍÓÚÑÜ ]+$/.test(x) && !vacias.test(x));
-  if (nombres.length) datos.nombreCompleto = titulo(nombres.slice(0, 2).reverse().join(' '));
-  const cats = [...new Set(t.toUpperCase().match(/\b(A1|A2|B1|B2|B3|C1|C2|C3)\b/g) || [])];
-  if (cats.length) { datos.categorias = cats.join(', '); datos.tipo = 'Licencia de conducción'; }
-  if (datos.tipo === 'Licencia de conducción' && fechas.length) datos.vence = fechas.sort().at(-1);
-  else if (fechas.length) datos.nacimiento = fechas.sort()[0];
-  return datos;
-}
-
-// Licencia de conducción (RUNT): número de documento con ceros a la izquierda, categorías, apellidos y nombres,
-// y después la foto del titular (JPEG). Ej.: 0001140861508B1 A2 C FRANCO MADERA VICTOR 2ÿØÿà…JFIF…
-function sinFoto(texto) {
-  const i = texto.search(/\xff\xd8|\u00c3\u00bf\u00c3\u0098|ÿØ|JFIF/);
-  return i < 0 ? texto : texto.slice(0, Math.max(0, texto.lastIndexOf('JFIF', i) === i ? i - 6 : i));
-}
-function leerLicencia(texto) {
-  const cabeza = limpiarCampo(sinFoto(texto)).toUpperCase();
-  const m = /^0*(\d{6,12})\s*((?:[ABC][1-3]\s*)+)(.*)$/.exec(cabeza);
-  if (!m) return null;
-  const palabras = m[3].match(/[A-ZÁÉÍÓÚÑÜ]{2,}/g) || [];
-  if (!palabras.length) return null;
-  // Primero vienen los dos apellidos y luego los nombres
-  const ap = palabras.length > 2 ? palabras.slice(0, 2) : palabras.slice(0, 1);
-  const no = palabras.slice(ap.length);
-  const fechas = [...cabeza.matchAll(/(?<!\d)(\d{4})[-/]?(\d{2})[-/]?(\d{2})(?!\d)/g)].map((f) => fechaValida(f[1] + f[2] + f[3])).filter(Boolean);
-  return {
-    tipo: 'Licencia de conducción',
-    documento: m[1],
-    apellidos: titulo(ap.join(' ')),
-    nombres: titulo(no.join(' ')),
-    categorias: [...new Set(m[2].match(/[ABC][1-3]/g))].join(', '),
-    vence: fechas.sort().at(-1) || '',
-    cabeza,
-  };
-}
-
-function interpretar(resultado) {
-  const raw = resultado.bytes && resultado.bytes.length ? latin1(resultado.bytes) : resultado.text;
-  // La licencia viene en UTF-8 (Ñ y tildes); la cédula amarilla es binaria y se lee byte a byte
-  const utf8 = resultado.bytes && resultado.bytes.length ? new TextDecoder('utf-8').decode(resultado.bytes) : resultado.text;
-  const d = leerCedulaAmarilla(raw) || leerLicencia(utf8) || leerGenerico(sinFoto(utf8));
-  d.formato = resultado.format;
-  d.crudo = d.cabeza || limpiarCampo(sinFoto(raw).replace(/\x00+/g, ' | '));
-  delete d.cabeza;
-  if (!d.nombreCompleto && (d.nombres || d.apellidos)) d.nombreCompleto = [d.nombres, d.apellidos].filter(Boolean).join(' ');
-  return d;
-}
-
-// Tarjeta de propiedad: el formato del código no está documentado. Se separan todos los campos que trae
-// y a cada uno se le pone el nombre que se reconozca por su forma (placa, VIN, año, color, marca…).
-const VOCES_TARJETA = {
-  Servicio: /^(PARTICULAR|P[UÚ]BLICO|OFICIAL|DIPLOM[AÁ]TICO|ESPECIAL)$/,
-  Clase: /^(AUTOM[OÓ]VIL|CAMIONETA|CAMPERO|MICROB[UÚ]S|BUS|BUSETA|MOTOCICLETA|MOTOCARRO|CUATRIMOTO|CAMI[OÓ]N|VOLQUETA|TRACTOCAMI[OÓ]N|VAN)$/,
-  Combustible: /^(GASOLINA|DI[EÉ]SEL|ACPM|GAS|GNV|GAS ?GASOLINA|EL[EÉ]CTRICO|H[IÍ]BRIDO)$/,
-  Carrocería: /^(SED[AÁ]N|HATCH ?BACK|COUP[EÉ]|WAGON|STATION WAGON|CERRADA|DOBLE CABINA|ESTACAS|FURG[OÓ]N|PLATAFORMA|STREET|SPORT|TURISMO)$/,
-  Marca: /^(HYUNDAI|CHEVROLET|RENAULT|TOYOTA|KIA|NISSAN|MAZDA|FORD|VOLKSWAGEN|MERCEDES[ -]?BENZ|MERCEDES|SUZUKI|YAMAHA|HONDA|AUTECO|BAJAJ|AKT|JAC|FOTON|INTERNATIONAL|HINO|ISUZU|MITSUBISHI|DODGE|JEEP|BMW|AUDI|PEUGEOT|CITRO[EË]N|FIAT|SSANGYONG|CHERY|BYD|DFSK|GREAT WALL|SUBARU|VOLVO|KENWORTH|FREIGHTLINER|AGRALE|DAEWOO|KTM|TVS|VICTORY|HERO)$/,
-  Color: /^(BLANC[OA]|NEGR[OA]|GRIS|PLATA|PLATEAD[OA]|ROJ[OA]|AZUL|VERDE|AMARILL[OA]|NARANJA|BEIGE|CAF[EÉ]|VINOTINTO|DORAD[OA]|MORAD[OA]|BLANCO .+|GRIS .+|NEGRO .+|ROJO .+|AZUL .+|PLATA .+)$/,
+const MODOS = {
+  persona: { titulo: 'Escanear documento', donde: 'del <b>reverso</b> de la cédula, tarjeta de identidad, cédula de extranjería, PPT o licencia' },
+  vehiculo: { titulo: 'Escanear tarjeta de propiedad', donde: 'de la tarjeta de propiedad', esperado: 'tarjeta' },
+  soat: { titulo: 'Escanear SOAT', donde: 'del SOAT (impreso o en la pantalla del celular)', esperado: 'soat' },
+  tecnomecanica: { titulo: 'Escanear técnico-mecánica', donde: 'del certificado de revisión técnico-mecánica', esperado: 'tecnomecanica' },
 };
-function etiquetarCampo(v) {
-  if (/^[A-Z]{3}[ -]?(\d{3}|\d{2}[A-Z])$/.test(v)) return 'Placa';
-  if (/^[A-HJ-NPR-Z0-9]{17}$/.test(v) && /\d/.test(v) && /[A-Z]/.test(v)) return 'VIN / chasis';
-  if (/^(19[5-9]\d|20[0-4]\d)$/.test(v)) return 'Modelo (año)';
-  if (fechaValida(v.replace(/[-/]/g, '')) || /^\d{2}[-/]\d{2}[-/]\d{4}$/.test(v)) return 'Fecha';
-  for (const [etiqueta, re] of Object.entries(VOCES_TARJETA)) if (re.test(v)) return etiqueta;
-  // Nombre de persona o empresa: dos o más palabras solo con letras (S.A.S., LTDA incluidos)
-  if (v.length >= 8 && /^[A-ZÁÉÍÓÚÑÜ.&]+( [A-ZÁÉÍÓÚÑÜ.&]+)+$/.test(v)) return 'Nombre (¿propietario?)';
-  if (/^\d{3,5}$/.test(v)) return 'Número corto (cilindraje, capacidad…)';
-  if (/^\d{6,12}$/.test(v)) return 'Número (documento, licencia de tránsito…)';
-  return '';
-}
-function interpretarTarjeta(resultado) {
-  const utf8 = resultado.bytes && resultado.bytes.length ? new TextDecoder('utf-8').decode(resultado.bytes) : resultado.text;
-  const texto = sinFoto(utf8);
-  let partes = texto.split(/[\x00-\x1f|;]+/);
-  if (partes.filter((x) => x.trim()).length < 3) partes = texto.split(/[\x00-\x1f|;,]+|\s{2,}/);
-  const campos = partes.map((x) => x.replace(/\s+/g, ' ').trim().toUpperCase()).filter(Boolean)
-    .map((valor) => ({ etiqueta: etiquetarCampo(valor), valor }));
-  // El número que viene justo después del nombre se toma como documento del propietario
-  campos.forEach((c, i) => {
-    const sig = campos[i + 1];
-    if (c.etiqueta === 'Nombre (¿propietario?)' && sig && /^\d{6,12}$/.test(sig.valor.replace(/[.\-\s]/g, ''))) sig.etiqueta = 'Documento (¿propietario?)';
-  });
-  const d = { campos, crudo: limpiarCampo(texto.replace(/\x00+/g, ' | ')) };
-  for (const c of campos) {
-    const k = { 'Placa': 'placa', 'VIN / chasis': 'vin', 'Modelo (año)': 'modelo', Servicio: 'servicio', Clase: 'clase', Marca: 'marca', Color: 'color', Combustible: 'combustible', 'Nombre (¿propietario?)': 'propietario', 'Documento (¿propietario?)': 'propietario_doc' }[c.etiqueta];
-    if (k && !d[k]) d[k] = k === 'placa' ? c.valor.replace(/[^A-Z0-9]/g, '') : c.valor;
-  }
-  return d;
-}
 
 // ---------- foto del frente (la lee Claude en el servidor) ----------
 function achicarFoto(archivo, lado = 1600) {
@@ -178,7 +33,7 @@ async function leerFrente(archivo) {
   return {
     tipo: r.tipo, documento: r.numero, nombres: titulo(r.nombres || ''), apellidos: titulo(r.apellidos || ''),
     sexo: r.sexo, nacimiento: r.nacimiento, rh: r.rh, expedicion: r.expedicion, vence: r.vence,
-    categorias: r.categorias, organismo: r.organismo, delFrente: true,
+    categorias: r.categorias, organismo: r.organismo, nacionalidad: r.nacionalidad, delFrente: true,
   };
 }
 // Tarjeta de propiedad (licencia de tránsito) del vehículo: solo por foto
@@ -187,6 +42,12 @@ async function leerTarjetaPropiedad(archivo) {
   for (const k of ['marca', 'linea', 'color', 'clase', 'servicio']) r[k] = titulo(r[k] || '');
   // Las empresas (S.A.S., LTDA) se dejan como vienen impresas
   if (!/\b(S\.?A\.?S|LTDA|S\.?A)\b\.?/i.test(r.propietario || '')) r.propietario = titulo(r.propietario || '');
+  return r;
+}
+// SOAT o técnico-mecánica por foto: clase 'soat' | 'tecnomecanica'
+async function leerVigenciaFoto(archivo, clase) {
+  const r = await api('/leer-documento', { method: 'POST', body: { clase, imagen: await achicarFoto(archivo) } });
+  r.entidad = /\b(S\.?A\.?S|LTDA|S\.?A)\b/i.test(r.entidad || '') ? r.entidad : titulo(r.entidad || '');
   return r;
 }
 // Une lo del código de barras con lo del frente: el frente trae el nombre completo y las fechas
@@ -202,23 +63,24 @@ function unir(codigo, frente) {
 
 // ---------- pantalla del escáner ----------
 // escanearDocumento() abre la cámara y devuelve { documento, nombreCompleto, ... } ya confirmado, o null si se cancela.
-// Con modo 'vehiculo' lee el código de la tarjeta de propiedad y devuelve { placa, vin, modelo }.
+// Modos: 'persona' (por defecto), 'vehiculo' (tarjeta de propiedad), 'soat' y 'tecnomecanica'.
 function escanearDocumento(modo = 'persona') {
-  const vehiculo = modo === 'vehiculo';
+  const M = MODOS[modo];
+  const vehiculo = modo !== 'persona';
   return new Promise((resolver) => {
     const capa = document.createElement('div');
     capa.className = 'escaner';
     capa.innerHTML = `
-      <div class="esc-barra"><b>${vehiculo ? 'Escanear tarjeta de propiedad' : 'Escanear documento'}</b><button type="button" class="btn chico" data-a="cerrar">Cerrar</button></div>
+      <div class="esc-barra"><b>${M.titulo}</b><button type="button" class="btn chico" data-a="cerrar">Cerrar</button></div>
       <div class="esc-video"><video playsinline muted></video><div class="esc-marco"></div></div>
-      <p class="esc-ayuda">Ponga el código de barras (el rectángulo de rayas o el cuadro QR) ${vehiculo ? 'de la tarjeta de propiedad' : 'del <b>reverso</b> de la cédula o de la licencia'} dentro del marco. Acerque hasta que se vea nítido.</p>
+      <p class="esc-ayuda">Ponga el código de barras (el rectángulo de rayas o el cuadro QR) ${M.donde} dentro del marco. Acerque hasta que se vea nítido.</p>
       <div class="esc-botones">
         <button type="button" class="btn chico" data-a="linterna" hidden>🔦 Linterna</button>
         <label class="btn chico">📸 Foto del código<input type="file" accept="image/*" capture="environment" hidden data-a="foto-codigo"></label>
         ${vehiculo ? '' : '<label class="btn chico">🪪 Foto del frente<input type="file" accept="image/*" capture="environment" hidden data-a="foto-frente"></label>'}
       </div>
-      <p class="suave pequeno">${vehiculo ? 'Si el código no trae todos los datos, cierre y use <b>Leer tarjeta de propiedad</b> con la foto del frente.'
-        : 'La cédula amarilla trae todo en el código. La licencia solo trae número, categorías y parte del nombre: para el nombre completo, fechas y RH use <b>Foto del frente</b>.'}</p>
+      <p class="suave pequeno">${vehiculo ? 'Si el código no trae todos los datos, cierre y use el botón de <b>foto</b> del documento.'
+        : 'La cédula y la tarjeta de identidad antiguas traen todo en el código. La licencia solo trae número, categorías y parte del nombre: para lo demás use <b>Foto del frente</b>.'}</p>
       <p class="esc-estado suave pequeno">Preparando cámara…</p>`;
     document.body.appendChild(capa);
     const video = capa.querySelector('video');
@@ -234,13 +96,13 @@ function escanearDocumento(modo = 'persona') {
     capa.querySelector('[data-a=cerrar]').onclick = () => terminar(null);
 
     async function procesar(entrada) {
-      const res = await ZXingWASM.readBarcodes(entrada, OPCIONES_LECTOR);
-      const r = res.find((x) => x.isValid);
+      const r = await LectorCodigos.leerCodigo(entrada);
       if (!r) return false;
       activo = false;
       if (navigator.vibrate) navigator.vibrate(80);
       if (flujo) flujo.getTracks().forEach((t) => t.stop());
-      if (vehiculo) confirmarVehiculo(interpretarTarjeta(r)); else confirmar(interpretar(r));
+      const d = LectorCodigos.interpretar(r, M.esperado);
+      if (vehiculo) confirmarVehiculo(d); else confirmar(d);
       return true;
     }
 
@@ -253,11 +115,13 @@ function escanearDocumento(modo = 'persona') {
           <label>Número de documento</label><input id="esc-doc" inputmode="numeric" value="${h(d.documento || '')}">
           <label>Nombre completo</label><input id="esc-nom" value="${h(d.nombreCompleto || '')}">
           ${d.tipo === 'Licencia de conducción' ? '<p class="suave pequeno">Revise que el número coincida con el de la licencia física.</p>' : ''}
-          <table class="datos">${fila('sexo', 'Sexo')}${fila('nacimiento', 'Nacimiento')}${fila('rh', 'RH')}${fila('expedicion', 'Expedición')}${fila('categorias', 'Categorías')}${fila('vence', 'Vence')}${fila('organismo', 'Expedida por')}</table>
+          <table class="datos">${fila('sexo', 'Sexo')}${fila('nacimiento', 'Nacimiento')}${fila('rh', 'RH')}${fila('expedicion', 'Expedición')}${fila('categorias', 'Categorías')}${fila('vence', 'Vence')}${fila('organismo', 'Expedida por')}${fila('nacionalidad', 'Nacionalidad')}${fila('numeroTarjeta', 'N.º de la tarjeta')}</table>
+          ${d.verificado === false ? '<p class="obs pequeno">⚠️ Los dígitos de control no cuadran: puede haber un carácter mal leído. Escanee otra vez.</p>' : ''}
+          ${d.enlace ? `<p class="pequeno">Enlace de verificación: <a href="${h(d.enlace)}" target="_blank" rel="noopener">abrir</a></p>` : ''}
           ${d.aviso ? `<p class="obs pequeno">⚠️ ${h(d.aviso)}</p>` : ''}
           ${d.delFrente ? '' : `<label class="btn bloque" style="margin-top:10px">🪪 Completar con foto del frente<input type="file" accept="image/*" capture="environment" hidden id="esc-frente"></label>
           <p class="suave pequeno" id="esc-frente-txt"></p>`}
-          ${d.tipo === 'Cédula de ciudadanía' || d.apellidos || d.delFrente ? '' : '<p class="obs pequeno">Revise los datos contra el documento físico: este formato no trae los campos en posiciones fijas.</p>'}
+          ${d.apellidos || d.delFrente ? '' : '<p class="obs pequeno">Revise los datos contra el documento físico: este formato no trae los campos en posiciones fijas.</p>'}
           ${d.crudo ? `<details class="pequeno"><summary>Ver texto del código</summary><code class="crudo">${h(d.crudo)}</code></details>` : ''}
           <p><button type="button" class="btn primario bloque grande" data-a="usar">Usar estos datos</button></p>
           <p><button type="button" class="btn bloque" data-a="otra">Escanear otra vez</button></p>
@@ -282,13 +146,17 @@ function escanearDocumento(modo = 'persona') {
       capa.innerHTML = `
         <div class="esc-barra"><b>Datos del código</b><button type="button" class="btn chico" data-a="cerrar">Cancelar</button></div>
         <div class="esc-confirmar">
-          <div class="chip">Tarjeta de propiedad · ${d.campos.length} datos</div>
+          <div class="chip">${h(d.tipo)} · ${d.campos.length} datos</div>
           <label>Placa</label><input id="esc-placa" style="text-transform:uppercase" value="${h(d.placa || '')}">
-          <label>Modelo (año)</label><input id="esc-modelo" inputmode="numeric" value="${h(d.modelo || '')}">
+          ${modo === 'vehiculo' ? `<label>Modelo (año)</label><input id="esc-modelo" inputmode="numeric" value="${h(d.modelo || '')}">`
+            : `<label>${modo === 'soat' ? 'N.º de póliza' : 'N.º de certificado'}</label><input id="esc-numero" value="${h(d.numero || '')}">
+          <label>${modo === 'soat' ? 'Aseguradora' : 'CDA'}</label><input id="esc-entidad" value="${h(d.entidad || '')}">
+          <label>Vence</label><input id="esc-vence" type="date" value="${h(d.vence || '')}">
+          ${d.enlace ? `<p class="pequeno">Enlace de verificación: <a href="${h(d.enlace)}" target="_blank" rel="noopener">abrir</a></p>` : ''}`}
           <h2>Todo lo que trae el código</h2>
           <div class="todos">${tabla || '<div>El código no trae campos legibles</div>'}</div>
-          <label class="check"><input type="checkbox" id="esc-notas" checked><span>Guardar todos estos datos en Notas</span></label>
-          <p class="obs pequeno">Los nombres de cada dato se deducen por su forma (placa, año, color, marca…). Los que dicen “Dato N” no se reconocieron: compárelos con la tarjeta.</p>
+          ${modo === 'vehiculo' ? '<label class="check"><input type="checkbox" id="esc-notas" checked><span>Guardar todos estos datos en Notas</span></label>' : ''}
+          <p class="obs pequeno">Los nombres de cada dato se deducen por su forma (placa, año, fechas, entidad…). Los que dicen “Dato N” no se reconocieron: compárelos con el documento.</p>
           <details class="pequeno"><summary>Texto completo del código</summary><code class="crudo">${h(d.crudo)}</code></details>
           <p><button type="button" class="btn primario bloque grande" data-a="usar">Usar estos datos</button></p>
           <p><button type="button" class="btn bloque" data-a="otra">Escanear otra vez</button></p>
@@ -298,8 +166,14 @@ function escanearDocumento(modo = 'persona') {
       capa.querySelector('[data-a=usar]').onclick = () => terminar({
         ...d,
         placa: capa.querySelector('#esc-placa').value.toUpperCase().replace(/[^A-Z0-9]/g, ''),
-        modelo: capa.querySelector('#esc-modelo').value.replace(/\D/g, ''),
-        aNotas: capa.querySelector('#esc-notas').checked,
+        ...(modo === 'vehiculo' ? {
+          modelo: capa.querySelector('#esc-modelo').value.replace(/\D/g, ''),
+          aNotas: capa.querySelector('#esc-notas').checked,
+        } : {
+          numero: capa.querySelector('#esc-numero').value.trim(),
+          entidad: capa.querySelector('#esc-entidad').value.trim(),
+          vence: capa.querySelector('#esc-vence').value,
+        }),
       });
     }
 

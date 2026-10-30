@@ -7,8 +7,14 @@
  *   - Cédula de ciudadanía nueva (digital, 2020+): código QR. Si trae la zona MRZ (formato pasaporte, 3 líneas
  *     con "<") se lee con dígitos de verificación; si trae otro formato, se extrae lo reconocible.
  *   - Licencia de conducción (RUNT): número, categorías, apellidos y nombre (después viene la foto del titular).
+ *   - Tarjeta de identidad antigua (azul, PDF417) y nueva (digital, QR): mismos formatos que la cédula; se
+ *     distingue de la cédula por la edad (menor de 18 años).
+ *   - Cédula de extranjería y PPT (Permiso por Protección Temporal): MRZ con nacionalidad distinta de COL, o
+ *     palabras clave en el texto; si el QR es un enlace de verificación, se devuelve el enlace y sus datos.
  *   - Tarjeta de propiedad (licencia de tránsito): formato no documentado; se separan todos los campos y se
  *     nombra cada uno por su forma (placa, VIN, año, marca, color, servicio, propietario…).
+ *   - SOAT y revisión técnico-mecánica: formato no documentado (cambia según aseguradora o CDA); se buscan
+ *     placa, número de póliza o certificado, entidad y fechas de vigencia.
  *
  * Depende solo de zxing-wasm (https://github.com/Sec-ant/zxing-wasm), versión 3.1.6, build IIFE "reader":
  *   node_modules/zxing-wasm/dist/iife/reader/index.js  y  node_modules/zxing-wasm/dist/reader/zxing_reader.wasm
@@ -27,7 +33,8 @@
  *   // Desde una foto (input type=file)
  *   const datos = await LectorCodigos.leerFoto(input.files[0]);   // null si no encuentra código
  *
- *   // Si ya se sabe qué documento es: 'cedula' | 'licencia' | 'tarjeta' (por defecto se detecta solo)
+ *   // Si ya se sabe qué documento es: 'cedula' | 'licencia' | 'tarjeta' | 'soat' | 'tecnomecanica'
+ *   // (por defecto se detecta solo; 'cedula' cubre también tarjeta de identidad, extranjería y PPT)
  *   LectorCodigos.leerFoto(archivo, { esperado: 'tarjeta' });
  */
 (function (global) {
@@ -126,13 +133,24 @@
     if (a < 1900 || a > 2100 || me < 1 || me > 12 || d < 1 || d > 31) return '';
     return `${m[1]}-${m[2]}-${m[3]}`;
   }
+  function edad(nacimiento) {
+    if (!nacimiento) return null;
+    const n = new Date(nacimiento + 'T12:00:00'), h = new Date();
+    return h.getFullYear() - n.getFullYear() - (h < new Date(h.getFullYear(), n.getMonth(), n.getDate()) ? 1 : 0);
+  }
+  const esMenor = (nacimiento) => { const e = edad(nacimiento); return e !== null && e < 18; };
+  // Fechas en cualquiera de las formas usuales: AAAAMMDD, AAAA-MM-DD, DD/MM/AAAA, DD-MM-AAAA
+  function fechasEn(texto) {
+    return [...texto.matchAll(/(?<!\d)(\d{4})[-/]?(\d{2})[-/]?(\d{2})(?!\d)|(?<!\d)(\d{2})[-/](\d{2})[-/](\d{4})(?!\d)/g)]
+      .map((m) => (m[1] ? fechaValida(m[1] + m[2] + m[3]) : fechaValida(m[6] + m[5] + m[4]))).filter(Boolean);
+  }
   // Corta la foto JPEG que algunos códigos traen al final (la licencia la trae codificada en UTF-8)
   function sinFoto(texto) {
     const i = texto.search(/\xff\xd8|Ã¿Ã\u0098|ÿØ|JFIF/);
     return i < 0 ? texto : texto.slice(0, Math.max(0, texto.lastIndexOf('JFIF', i) === i ? i - 6 : i));
   }
 
-  // ---------- cédula antigua (amarilla con hologramas) ----------
+  // ---------- cédula antigua (amarilla con hologramas) y tarjeta de identidad antigua (azul) ----------
   // PDF417 binario de posiciones fijas: documento 48-58, primer apellido 58-81, segundo 81-104,
   // primer nombre 104-127, segundo 127-150, luego sexo + nacimiento AAAAMMDD, municipio y RH.
   function leerCedulaAntigua(raw) {
@@ -142,18 +160,21 @@
     if (doc.length < 5 || !campos[0] || !campos[2] || !campos.every((c) => !c || soloLetras(c))) return null;
     const sn = /([MF])(\d{8})/.exec(raw.slice(150));
     const rh = /(A|B|AB|O)\s?([+-])/.exec(raw.slice(160).replace(/\x00/g, ' '));
+    const nacimiento = sn ? fechaValida(sn[2]) : '';
     return {
-      tipo: 'Cédula de ciudadanía (antigua)',
+      // La tarjeta de identidad usa el mismo formato; se reconoce porque el titular es menor de edad
+      tipo: esMenor(nacimiento) ? 'Tarjeta de identidad (antigua)' : 'Cédula de ciudadanía (antigua)',
       documento: doc,
       apellidos: titulo([campos[0], campos[1]].filter(Boolean).join(' ')),
       nombres: titulo([campos[2], campos[3]].filter(Boolean).join(' ')),
       sexo: sn ? sn[1] : '',
-      nacimiento: sn ? fechaValida(sn[2]) : '',
+      nacimiento,
       rh: rh ? rh[1] + rh[2] : '',
     };
   }
 
-  // ---------- cédula nueva (digital): zona MRZ, formato ICAO TD1 de 3 líneas x 30 caracteres ----------
+  // ---------- documentos con zona MRZ (formato ICAO TD1 de 3 líneas x 30 caracteres) ----------
+  // Cédula digital, tarjeta de identidad digital y cédula de extranjería / PPT expedidos en Colombia.
   function digitoMRZ(s) {
     const pesos = [7, 3, 1];
     let suma = 0;
@@ -171,24 +192,31 @@
   }
   function leerMRZ(texto) {
     const lineas = texto.toUpperCase().replace(/[^A-Z0-9<\n]/g, '\n').split('\n').map((l) => l.trim()).filter((l) => /^[A-Z0-9<]{30}$/.test(l));
-    const i = lineas.findIndex((l) => /^I[A-Z<]COL/.test(l));
+    const i = lineas.findIndex((l) => /^[IAC][A-Z<]COL/.test(l));
     if (i < 0 || !lineas[i + 2]) return null;
     const [l1, l2, l3] = lineas.slice(i, i + 3);
     const numero = l1.slice(5, 14).replace(/</g, '');
     const opcional = l1.slice(15, 30).replace(/</g, '');
     const [ap, no] = l3.split('<<');
     const verificado = digitoMRZ(l1.slice(5, 14)) === l1[14] && digitoMRZ(l2.slice(0, 6)) === l2[6] && digitoMRZ(l2.slice(8, 14)) === l2[14];
+    const nacionalidad = l2.slice(15, 18).replace(/</g, '');
+    const nacimiento = fechaMRZ(l2.slice(0, 6), true);
+    const extranjero = nacionalidad && nacionalidad !== 'COL';
+    let tipo;
+    if (extranjero) tipo = /PPT|PROTECCI[OÓ]N/.test(texto.toUpperCase()) ? 'Permiso por Protección Temporal (PPT)' : 'Cédula de extranjería';
+    else tipo = esMenor(nacimiento) ? 'Tarjeta de identidad (digital)' : 'Cédula de ciudadanía (digital)';
     return {
-      tipo: 'Cédula de ciudadanía (digital)',
-      // En la cédula digital el NUIP (número de cédula) va en el campo opcional; el campo principal es el número de la tarjeta
-      documento: (/^\d{6,10}$/.test(opcional) ? opcional : numero).replace(/^0+/, ''),
+      tipo,
+      // Para colombianos el NUIP va en el campo opcional y el principal es el número de la tarjeta;
+      // para extranjeros el número del documento es el principal
+      documento: (!extranjero && /^\d{6,10}$/.test(opcional) ? opcional : numero).replace(/^0+/, ''),
       numeroTarjeta: numero,
       apellidos: titulo((ap || '').replace(/</g, ' ').trim()),
       nombres: titulo((no || '').replace(/</g, ' ').trim()),
       sexo: /[MF]/.test(l2[7]) ? l2[7] : '',
-      nacimiento: fechaMRZ(l2.slice(0, 6), true),
+      nacimiento,
       vence: fechaMRZ(l2.slice(8, 14), false),
-      nacionalidad: l2.slice(15, 18).replace(/</g, ''),
+      nacionalidad,
       verificado,
     };
   }
@@ -227,11 +255,13 @@
   const RE_PLACA = /^[A-Z]{3}[ -]?(\d{3}|\d{2}[A-Z])$/;
   const esVIN = (v) => /^[A-HJ-NPR-Z0-9]{17}$/.test(v) && /\d/.test(v) && /[A-Z]/.test(v);
   function etiquetarCampo(v) {
+    if (/^HTTPS?:\/\//.test(v)) return 'Enlace de verificación';
     if (RE_PLACA.test(v)) return 'Placa';
     if (esVIN(v)) return 'VIN / chasis';
     if (/^(19[5-9]\d|20[0-4]\d)$/.test(v)) return 'Modelo (año)';
     if (fechaValida(v.replace(/[-/]/g, '')) || /^\d{2}[-/]\d{2}[-/]\d{4}$/.test(v)) return 'Fecha';
     for (const [etiqueta, re] of Object.entries(VOCES_TARJETA)) if (re.test(v)) return etiqueta;
+    if (ASEGURADORAS.test(v)) return 'Aseguradora';
     // Nombre de persona o empresa: dos o más palabras solo con letras (S.A.S., LTDA incluidos)
     if (v.length >= 8 && /^[A-ZÁÉÍÓÚÑÜ.&]+( [A-ZÁÉÍÓÚÑÜ.&]+)+$/.test(v)) return 'Nombre (¿propietario?)';
     if (/^\d{3,5}$/.test(v)) return 'Número corto (cilindraje, capacidad…)';
@@ -261,17 +291,76 @@
   }
   const pareceTarjeta = (texto) => separarCampos(sinFoto(texto)).some((v) => RE_PLACA.test(v) || esVIN(v));
 
+  // ---------- SOAT y revisión técnico-mecánica ----------
+  const ASEGURADORAS = /\b(SURA|SURAMERICANA|MAPFRE|PREVISORA|BOL[IÍ]VAR|ALLIANZ|AXA ?COLPATRIA|COLPATRIA|MUNDIAL|SOLIDARIA|EQUIDAD|HDI|LIBERTY|ESTADO|POSITIVA|SBS|COLMENA|CARDIF|ZURICH|QBE)\b/;
+  const RE_SOAT = /SOAT|SEGURO OBLIGATORIO|P[OÓ]LIZA/;
+  const RE_RTM = /T[EÉ]CNICO ?-?MEC[AÁ]NICA|TECNOMEC[AÁ]NICA|REVISI[OÓ]N T[EÉ]CNICO|\bCDA\b|CENTRO DE DIAGN[OÓ]STICO|\bRTM\b/;
+  // Si el QR es un enlace (página de verificación), sus parámetros también son datos
+  function datosDeEnlace(texto) {
+    const m = /https?:\/\/[^\s|]+/i.exec(texto);
+    if (!m) return null;
+    const campos = [];
+    try {
+      const u = new URL(m[0]);
+      u.searchParams.forEach((v, k) => { if (v) campos.push({ etiqueta: k, valor: v.toUpperCase() }); });
+    } catch (e) { /* enlace mal formado: se devuelve tal cual */ }
+    return { enlace: m[0], campos };
+  }
+  function leerDocVehiculo(texto, clase) {
+    const t = sinFoto(texto).toUpperCase();
+    const enlace = datosDeEnlace(texto);
+    const campos = separarCampos(sinFoto(texto)).map((valor) => ({ etiqueta: etiquetarCampo(valor), valor }));
+    if (enlace) campos.push(...enlace.campos.map((c) => ({ etiqueta: etiquetarCampo(c.valor) || c.etiqueta, valor: c.valor })));
+    const todo = [t, ...campos.map((c) => c.valor)].join('|');
+    const placa = /(?<![A-Z0-9])([A-Z]{3})[ -]?(\d{3}|\d{2}[A-Z])(?![A-Z0-9])/.exec(todo);
+    const fechas = [...new Set(fechasEn(todo))].sort();
+    // Número de póliza o certificado: la cifra más larga que no sea fecha ni documento corto
+    const sinFechas = todo.replace(/(?<!\d)(\d{4})[-/]?(\d{2})[-/]?(\d{2})(?!\d)/g, (m0, a, me, d) => (fechaValida(a + me + d) ? '|' : m0));
+    const numeros = (sinFechas.match(/\d{6,20}/g) || []).sort((a, b) => b.length - a.length);
+    const aseg = ASEGURADORAS.exec(todo);
+    const cda = /\bCDA[ A-ZÁÉÍÓÚÑ.&]{3,40}/.exec(todo);
+    return {
+      tipo: clase === 'soat' ? 'SOAT' : 'Revisión técnico-mecánica',
+      placa: placa ? placa[1] + placa[2] : '',
+      numero: numeros[0] || '',
+      entidad: clase === 'soat' ? (aseg ? aseg[1] : '') : (cda ? cda[0].trim() : ''),
+      desde: fechas.length > 1 ? fechas[0] : '',
+      vence: fechas.at(-1) || '',
+      enlace: enlace ? enlace.enlace : '',
+      campos,
+    };
+  }
+
   // ---------- cualquier otro código: lo reconocible por su forma ----------
   function leerGenerico(texto) {
-    const t = texto.replace(/[\x00-\x1f]/g, '|');
-    const datos = { tipo: /LICENCIA|CONDUC|RUNT|TRANSITO|TRÁNSITO/i.test(t) ? 'Licencia de conducción' : 'Documento' };
+    // Si es un enlace de verificación, se trabaja con los valores de sus parámetros en lugar de la dirección
+    const enlace = datosDeEnlace(texto);
+    const base = enlace ? texto.replace(enlace.enlace, '|') + '|' + enlace.campos.map((c) => c.valor).join('|') : texto;
+    const t = base.replace(/[\x00-\x1f]/g, '|');
+    const T = (texto + '|' + t).toUpperCase();
+    const datos = { tipo: /PPT|PROTECCI[OÓ]N TEMPORAL/.test(T) ? 'Permiso por Protección Temporal (PPT)'
+      : /EXTRANJER/.test(T) ? 'Cédula de extranjería'
+        : /TARJETA DE IDENTIDAD/.test(T) ? 'Tarjeta de identidad'
+          : /LICENCIA|CONDUC|RUNT|TRANSITO|TRÁNSITO/.test(T) ? 'Licencia de conducción' : 'Documento' };
+    if (enlace) datos.enlace = enlace.enlace;
+    // Los nombres de los parámetros del enlace dicen qué es cada dato
+    const porNombre = {};
+    if (enlace) {
+      for (const c of enlace.campos) {
+        const k = c.etiqueta.toLowerCase();
+        if (/venc|hasta|expira/.test(k)) porNombre.vence = fechasEn(c.valor)[0];
+        else if (/nac/.test(k)) porNombre.nacimiento = fechasEn(c.valor)[0];
+        else if (/^(doc|num|nro|id|cedula|ppt)/.test(k) && /\d{5,}/.test(c.valor)) porNombre.documento = c.valor.replace(/\D/g, '').replace(/^0+/, '');
+        else if (/nom/.test(k)) porNombre.nombreCompleto = titulo(c.valor);
+      }
+    }
     const fechas = [...t.matchAll(/(?<!\d)(\d{4})[-/]?(\d{2})[-/]?(\d{2})(?!\d)|(?<!\d)(\d{2})[-/](\d{2})[-/](\d{4})(?!\d)/g)]
       .map((m) => (m[1] ? fechaValida(m[1] + m[2] + m[3]) : fechaValida(m[6] + m[5] + m[4]))).filter(Boolean);
     const sinFechas = t.replace(/(?<!\d)(\d{4})[-/]?(\d{2})[-/]?(\d{2})(?!\d)/g, (m, a, me, d) => (fechaValida(a + me + d) ? '|' : m))
       .replace(/(?<!\d)\d{2}[-/]\d{2}[-/]\d{4}(?!\d)/g, '|');
     const numeros = (sinFechas.match(/\d{6,10}/g) || []).map((n) => n.replace(/^0+/, '')).filter((n) => n.length >= 6);
     if (numeros.length) datos.documento = numeros[0];
-    const vacias = /\b(LICENCIA|CONDUCCI[OÓ]N|REP[UÚ]BLICA|COLOMBIA|MINISTERIO|TRANSPORTE|RUNT|C[EÉ]DULA|NUIP|TR[AÁ]NSITO|SERVICIO|PARTICULAR|P[UÚ]BLICO|CATEGOR[IÍ]A|NACIONALIDAD|COL)\b/;
+    const vacias = /\b(LICENCIA|CONDUCCI[OÓ]N|REP[UÚ]BLICA|COLOMBIA|MINISTERIO|TRANSPORTE|RUNT|C[EÉ]DULA|NUIP|TR[AÁ]NSITO|SERVICIO|PARTICULAR|P[UÚ]BLICO|CATEGOR[IÍ]A|NACIONALIDAD|COL|PPT|PERMISO|PROTECCI[OÓ]N|TEMPORAL|EXTRANJER[IÍ]A|MIGRACI[OÓ]N)\b/;
     const nombres = t.toUpperCase().split(/[|,;:\t]+/).map((x) => x.replace(/\s+/g, ' ').trim())
       .filter((x) => x.length >= 3 && /^[A-ZÁÉÍÓÚÑÜ ]+$/.test(x) && !vacias.test(x));
     if (nombres.length) datos.nombreCompleto = titulo(nombres.slice(0, 2).reverse().join(' '));
@@ -279,8 +368,10 @@
     if (cats.length) { datos.categorias = cats.join(', '); datos.tipo = 'Licencia de conducción'; }
     if (fechas.length) {
       datos.fechas = fechas.sort();
-      if (datos.tipo === 'Licencia de conducción') datos.vence = datos.fechas.at(-1); else datos.nacimiento = datos.fechas[0];
+      if (datos.tipo === 'Documento' || datos.tipo === 'Tarjeta de identidad') datos.nacimiento = datos.fechas[0]; else datos.vence = datos.fechas.at(-1);
     }
+    for (const [k, v] of Object.entries(porNombre)) if (v) datos[k] = v;
+    if (porNombre.vence && datos.nacimiento === porNombre.vence) delete datos.nacimiento;
     return datos;
   }
 
@@ -292,10 +383,16 @@
     // La cédula antigua es binaria y se lee byte a byte; la licencia y la tarjeta vienen en UTF-8 (Ñ y tildes)
     const raw = hayBytes ? latin1(resultado.bytes) : resultado.text;
     const utf8 = hayBytes ? new TextDecoder('utf-8').decode(resultado.bytes) : resultado.text;
+    const T = utf8.toUpperCase();
     let d = null;
     if (esperado === 'tarjeta') d = leerTarjeta(utf8);
-    if (!d && esperado !== 'tarjeta') d = leerCedulaAntigua(raw) || leerMRZ(utf8) || leerLicencia(utf8);
-    if (!d && !esperado && pareceTarjeta(utf8)) d = leerTarjeta(utf8);
+    else if (esperado === 'soat' || esperado === 'tecnomecanica') d = leerDocVehiculo(utf8, esperado);
+    else d = leerCedulaAntigua(raw) || leerMRZ(utf8) || leerLicencia(utf8);
+    if (!d && !esperado) {
+      if (RE_SOAT.test(T)) d = leerDocVehiculo(utf8, 'soat');
+      else if (RE_RTM.test(T)) d = leerDocVehiculo(utf8, 'tecnomecanica');
+      else if (pareceTarjeta(utf8)) d = leerTarjeta(utf8);
+    }
     if (!d) d = leerGenerico(sinFoto(utf8));
     if (!d.campos) d.campos = separarCampos(sinFoto(utf8)).map((valor) => ({ etiqueta: '', valor }));
     if (d.nombres || d.apellidos) d.nombreCompleto = [d.nombres, d.apellidos].filter(Boolean).join(' ');
@@ -307,6 +404,6 @@
   global.LectorCodigos = {
     configurar, cargarLector, iniciarCamara, leerFoto, leerCodigo, interpretar,
     // intérpretes sueltos, por si se quieren usar con un texto ya leído
-    leerCedulaAntigua, leerMRZ, leerLicencia, leerTarjeta, leerGenerico,
+    leerCedulaAntigua, leerMRZ, leerLicencia, leerTarjeta, leerDocVehiculo, leerGenerico,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

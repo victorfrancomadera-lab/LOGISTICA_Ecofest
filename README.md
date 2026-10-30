@@ -14,6 +14,9 @@ App web para el equipo en calle:
 - Licencia de conducción y cédula digital: se extrae lo que el código traiga legible (número, nombre, categorías, vigencia) y siempre se pide revisar.
 - **Foto del frente**: la licencia no trae en el código el nombre completo, las fechas ni el RH. El botón **🪪 Foto del frente** (o **Completar con foto del frente** después de escanear) manda la foto a Claude, que transcribe los datos impresos. La foto no se guarda. Requiere la variable `ANTHROPIC_API_KEY` en Railway; sin ella, la app avisa y el resto sigue funcionando. `/healthz` muestra `lectura_fotos: true` cuando está configurada.
 - **Tarjeta de propiedad**: en **Vehículos → Nuevo/Editar**, **▦ Escanear código** lee el código de barras de la tarjeta (placa, modelo y VIN; el formato aún no está documentado, así que se confirma a mano) y **📷 Leer tarjeta (foto)** lee con Claude la foto del frente y llena placa, clase/marca/línea, color, puestos, modelo, servicio, propietario y número de la licencia de tránsito.
+- **Otros documentos de identidad**: el mismo botón lee la tarjeta de identidad antigua y nueva (se distingue de la cédula por la edad), la cédula de extranjería y el PPT (por la nacionalidad o por el texto del código). Si el código es un enlace de verificación, lo muestra.
+- **SOAT y técnico-mecánica**: en **Vehículos → Nuevo/Editar**, cada uno tiene **▦ Escanear código** y **📷 Leer foto**; se guardan número, aseguradora o CDA y vencimiento. La lista de vehículos muestra si están vencidos o por vencer (30 días), y al asignar un vehículo a un traslado aparece ⚠️ si tiene alguno vencido.
+- Toda la lectura de códigos está en `lector-codigos/lector-codigos-colombia.js` (independiente de la app; la app lo sirve en `/lector-codigos.js`).
 - El lector (`zxing-wasm`) se sirve desde la propia app en `/vendor/zxing`; no depende de un CDN. Requiere HTTPS (Railway ya lo da).
 
 Los dos módulos se exportan a Excel (CSV) desde **Más**.

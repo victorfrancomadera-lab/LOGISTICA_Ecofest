@@ -315,7 +315,7 @@ async function vistaFormTraslado(id) {
       <div class="dos">
         <div><label>Fecha *</label><input type="date" name="fecha" value="${v('fecha')}" required></div>
         <div><label>Vehículo</label><select name="vehiculo_id"><option value="">Sin asignar</option>
-          ${vehiculos.map((x) => `<option value="${x.id}" ${x.id === t.vehiculo_id ? 'selected' : ''}>${h(x.placa)} · ${h(x.conductor || '')}</option>`).join('')}</select></div>
+          ${vehiculos.map((x) => `<option value="${x.id}" ${x.id === t.vehiculo_id ? 'selected' : ''}>${h(x.placa)} · ${h(x.conductor || '')}${docsVencidos(x) ? ' · ⚠️ ' + docsVencidos(x) : ''}</option>`).join('')}</select></div>
       </div>
       ${vehiculos.length ? '' : '<p class="suave pequeno">Aún no hay vehículos. <a href="#/vehiculos/nuevo">Registre uno</a>.</p>'}
       <label>¿A quién se recoge? *</label>
@@ -897,6 +897,17 @@ function vistaMas() {
   document.getElementById('salir').onclick = async () => { await api('/logout', { method: 'POST' }); estado.user = null; vistaLogin(); };
 }
 
+// Estado de un documento con vencimiento (SOAT, técnico-mecánica): vencido, por vencer (30 días) o vigente
+function chipVigencia(nombre, vence) {
+  if (!vence) return `<span class="chip">${nombre}: sin dato</span>`;
+  const dias = Math.round((new Date(vence + 'T12:00:00') - new Date(hoy() + 'T12:00:00')) / 86400000);
+  if (dias < 0) return `<span class="chip est-regreso">⚠️ ${nombre} vencido (${h(vence)})</span>`;
+  if (dias <= 30) return `<span class="chip est-en_camino">${nombre} vence en ${dias} día${dias === 1 ? '' : 's'}</span>`;
+  return `<span class="chip est-entregado">${nombre} hasta ${h(vence)}</span>`;
+}
+
+const docsVencidos = (v) => [v.soat_vence && v.soat_vence < hoy() && 'SOAT vencido', v.rtm_vence && v.rtm_vence < hoy() && 'técnico-mecánica vencida'].filter(Boolean).join(', ');
+
 async function vistaVehiculos() {
   const lista = await api('/vehiculos');
   pintar(`
@@ -906,10 +917,11 @@ async function vistaVehiculos() {
       <div class="fila entre"><span class="titulo" style="font-size:20px">${h(v.placa)}</span>${esAdmin() ? `<a class="btn chico" href="#/vehiculos/${v.id}">Editar</a>` : ''}</div>
       <div class="suave">${h([v.descripcion, v.color, v.capacidad ? v.capacidad + ' puestos' : ''].filter(Boolean).join(' · '))}</div>
       <div style="margin-top:6px">👤 ${h(v.conductor || 'Sin conductor')} ${v.conductor_doc ? '· CC ' + h(v.conductor_doc) : ''}${v.conductor_licencia ? ' · 🪪 ' + h(v.conductor_licencia) : ''}</div>
+      <div class="fila" style="margin-top:6px">${chipVigencia('SOAT', v.soat_vence)}${chipVigencia('Técnico-mecánica', v.rtm_vence)}</div>
       ${v.propietario || v.modelo ? `<div class="suave pequeno" style="margin-top:4px">${h([v.modelo && 'Modelo ' + v.modelo, v.servicio, v.propietario && 'Propietario: ' + v.propietario].filter(Boolean).join(' · '))}</div>` : ''}
       ${v.conductor_tel ? `<div class="fila" style="margin-top:8px"><a class="btn chico" href="tel:${h(telLimpio(v.conductor_tel))}">📞 ${h(v.conductor_tel)}</a>
         <a class="btn chico" href="${waLink(v.conductor_tel)}" target="_blank" rel="noopener">💬 WhatsApp</a></div>` : ''}
-      ${v.notas ? `<div class="suave pequeno" style="margin-top:6px">${h(v.notas)}</div>` : ''}
+      ${v.notas ? `<div class="suave pequeno" style="margin-top:6px;white-space:pre-line">${h(v.notas)}</div>` : ''}
     </div>`).join('') : '<div class="tarjeta suave">No hay vehículos registrados.</div>'}`);
 }
 
@@ -943,6 +955,19 @@ async function vistaFormVehiculo(id) {
         <div><label>Doc. propietario</label><input name="propietario_doc" inputmode="numeric" value="${c('propietario_doc')}"></div>
       </div>
       <label>N.º licencia de tránsito</label><input name="tarjeta_no" value="${c('tarjeta_no')}">
+      ${['soat', 'rtm'].map((k) => `
+      <h2>${k === 'soat' ? 'SOAT' : 'Revisión técnico-mecánica'}</h2>
+      <div class="dos">
+        <button type="button" class="btn" data-codigo="${k}">▦ Escanear código</button>
+        <label class="btn">📷 Leer foto<input type="file" accept="image/*" capture="environment" hidden data-foto="${k}"></label>
+      </div>
+      <p class="suave pequeno" id="${k}-txt"></p>
+      <div class="dos">
+        <div><label>${k === 'soat' ? 'N.º de póliza' : 'N.º de certificado'}</label><input name="${k}_numero" value="${c(k + '_numero')}"></div>
+        <div><label>${k === 'soat' ? 'Aseguradora' : 'CDA'}</label><input name="${k}_entidad" value="${c(k + '_entidad')}"></div>
+      </div>
+      <label>Vence</label><input type="date" name="${k}_vence" value="${c(k + '_vence')}">`).join('')}
+      <h2>Conductor</h2>
       <label>Conductor</label><input name="conductor" value="${c('conductor')}">
       <div class="dos">
         <div><label>Celular conductor</label><input name="conductor_tel" type="tel" value="${c('conductor_tel')}"></div>
@@ -972,6 +997,29 @@ async function vistaFormVehiculo(id) {
     }
     document.getElementById('tarjeta-txt').textContent = `✔ ${d.campos.length} datos leídos del código. Revíselos antes de guardar.`;
   };
+  // SOAT y técnico-mecánica: por código de barras o por foto; avisa si la placa no es la del vehículo
+  const ponerVigencia = (k, d) => {
+    if (d.numero) fVeh[k + '_numero'].value = d.numero;
+    if (d.entidad) fVeh[k + '_entidad'].value = d.entidad;
+    if (d.vence) fVeh[k + '_vence'].value = d.vence;
+    const placa = fVeh.placa.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const otra = d.placa && placa && d.placa !== placa;
+    document.getElementById(k + '-txt').textContent = otra
+      ? `⚠️ El documento es de la placa ${d.placa}, no de ${placa}. Revise antes de guardar.`
+      : `✔ Datos cargados${d.vence ? ' · vence ' + d.vence : ''}. Revíselos antes de guardar.`;
+  };
+  fVeh.querySelectorAll('[data-codigo]').forEach((b) => (b.onclick = async () => {
+    const k = b.dataset.codigo;
+    const d = await escanearDocumento(k === 'soat' ? 'soat' : 'tecnomecanica');
+    if (d) ponerVigencia(k, d);
+  }));
+  fVeh.querySelectorAll('[data-foto]').forEach((inp) => (inp.onchange = async (ev) => {
+    const k = inp.dataset.foto, f = ev.target.files[0]; if (!f) return;
+    document.getElementById(k + '-txt').textContent = 'Leyendo la foto…';
+    try { ponerVigencia(k, await leerVigenciaFoto(f, k === 'soat' ? 'soat' : 'tecnomecanica')); }
+    catch (e) { document.getElementById(k + '-txt').textContent = e.message; }
+    ev.target.value = '';
+  }));
   document.getElementById('foto-tarjeta').onchange = async (ev) => {
     const f = ev.target.files[0]; if (!f) return;
     const txt = document.getElementById('tarjeta-txt');
